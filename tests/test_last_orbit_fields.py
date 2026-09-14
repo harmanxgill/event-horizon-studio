@@ -136,6 +136,15 @@ assert v013_spec.loader is not None
 v013_spec.loader.exec_module(v013)
 
 
+v014_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v014",
+    PIECE_DIR / "experiments" / "v014_tidal_bridge.py",
+)
+v014 = importlib.util.module_from_spec(v014_spec)
+assert v014_spec.loader is not None
+v014_spec.loader.exec_module(v014)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -1338,3 +1347,144 @@ def test_v013_rejects_negative_interaction_parameters() -> None:
     for kwargs in ({"alpha_i": -1.0}, {"beta_i": -1.0}, {"strength": -0.1}):
         with pytest.raises(ValueError):
             v013.interaction_field(r, r, **kwargs)
+
+
+def test_v014_expression_is_finite() -> None:
+    x, y = v014.coordinate_grids(width=81, height=65)
+    field = v014.v014_field(x, y)
+    rgb = v014.v014_rgb(width=81, height=65)
+
+    assert field.shape == (65, 81)
+    assert np.isfinite(field).all()
+
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+
+
+def test_v014_matches_the_specified_product() -> None:
+    x, y = v014.coordinate_grids(width=121, height=121)
+    r1, r2 = v014.radial_fields(x, y)
+
+    for alpha_t, beta_t, eta_t, k_t in ((120.0, 25.0, 0.5, 32.0), (40.0, 10.0, 0.0, 8.0)):
+        interaction = v014.interaction_field(r1, r2, alpha_i=1.5, beta_i=3.0, strength=1.0)
+        expected = (
+            np.exp(-alpha_t * y**2)
+            * np.exp(-beta_t * x**4)
+            * interaction
+            * (1.0 + eta_t * np.cos(k_t * x))
+        )
+        actual = v014.tidal_bridge(
+            x, y, r1, r2, alpha_i=1.5, beta_i=3.0, strength=1.0,
+            alpha_t=alpha_t, beta_t=beta_t, eta_t=eta_t, k_t=k_t,
+        )
+        assert np.allclose(actual, expected)
+
+
+def test_v014_bridge_is_wider_than_it_is_tall() -> None:
+    x, y = v014.coordinate_grids(width=800, height=800)
+    r1, r2 = v014.radial_fields(x, y)
+
+    bridge = v014.tidal_bridge(x, y, r1, r2, eta_t=0.0)
+
+    row = int(np.argmin(np.abs(y[:, 0])))
+    col = int(np.argmin(np.abs(x[0])))
+
+    across = x[row][bridge[row] > 0.5 * bridge[row].max()]
+    up = y[:, col][bridge[:, col] > 0.5 * bridge[:, col].max()]
+
+    assert across.max() > 2.5 * up.max()
+    assert across.max() > 0.5 * 0.36
+
+
+def test_v014_super_gaussian_is_flatter_than_a_gaussian() -> None:
+    # compared at matched half-width, not matched coefficient: with the same
+    # coefficient the quartic only overtakes the gaussian beyond x = 1
+    half_width = (np.log(2.0) / 25.0) ** 0.25
+    x = np.linspace(0.0, 2.0 * half_width, 4000)
+
+    quartic = np.exp(-25.0 * x**4)
+    gaussian = np.exp(-np.log(2.0) / half_width**2 * x**2)
+
+    assert np.isclose(quartic[np.argmin(np.abs(x - half_width))], 0.5, atol=1.0e-3)
+    assert np.isclose(gaussian[np.argmin(np.abs(x - half_width))], 0.5, atol=1.0e-3)
+
+    inside = (x > 0.0) & (x < 0.95 * half_width)
+    outside = x > 1.05 * half_width
+
+    assert np.all(quartic[inside] > gaussian[inside])
+    assert np.all(quartic[outside] < gaussian[outside])
+
+
+def test_v014_internal_structure_makes_knots_along_the_bridge() -> None:
+    x, y = v014.coordinate_grids(width=800, height=800)
+    r1, r2 = v014.radial_fields(x, y)
+    row = int(np.argmin(np.abs(y[:, 0])))
+
+    def knots(eta_t: float) -> int:
+        profile = v014.tidal_bridge(x, y, r1, r2, eta_t=eta_t)[row]
+        interior = profile[1:-1]
+        dips = (interior < profile[:-2]) & (interior < profile[2:])
+        return int(dips[np.abs(x[row][1:-1]) < 0.4].sum())
+
+    assert knots(0.0) == 0
+    assert knots(0.5) >= 4
+
+
+def test_v014_bridge_phase_slides_the_knots() -> None:
+    x, y = v014.coordinate_grids(width=600, height=600)
+    r1, r2 = v014.radial_fields(x, y)
+
+    base = v014.tidal_bridge(x, y, r1, r2)
+    shifted = v014.tidal_bridge(x, y, r1, r2, bridge_phase=np.pi)
+
+    assert not np.allclose(base, shifted)
+    assert np.allclose(base, v014.tidal_bridge(x, y, r1, r2, bridge_phase=2.0 * np.pi))
+
+
+def test_v014_keeps_the_half_turn_symmetry() -> None:
+    x, y = v014.coordinate_grids(width=201, height=201)
+    field = v014.v014_field(x, y)
+
+    assert np.allclose(field, np.rot90(field, 2))
+    assert not np.allclose(field, np.fliplr(field))
+
+
+def test_v014_bridge_alone_is_mirror_symmetric() -> None:
+    x, y = v014.coordinate_grids(width=201, height=201)
+    r1, r2 = v014.radial_fields(x, y)
+
+    bridge = v014.tidal_bridge(x, y, r1, r2)
+
+    assert np.allclose(bridge, np.fliplr(bridge))
+    assert np.allclose(bridge, np.flipud(bridge))
+
+
+def test_v014_reduces_to_v013_geometry_without_strength() -> None:
+    x, y = v014.coordinate_grids(width=200, height=200)
+
+    assert np.allclose(
+        v014.v014_field(x, y, strength=0.0),
+        v013.v013_field(x, y, strength=0.0),
+    )
+
+
+def test_v014_keeps_the_silhouettes_solid() -> None:
+    x, y = v014.coordinate_grids(width=400, height=400)
+    r1, r2 = v014.radial_fields(x, y)
+    field = v014.v014_field(x, y)
+
+    margin = 6.0 * v014.grid_spacing(x, y)
+    inside = np.minimum(r1, r2) <= 0.14 - margin
+    assert inside.any()
+    assert field[inside].max() < 1.0e-2
+
+
+def test_v014_rejects_invalid_bridge_parameters() -> None:
+    import pytest
+
+    x, y = v014.coordinate_grids(width=16, height=16)
+    r1, r2 = v014.radial_fields(x, y)
+
+    for kwargs in ({"alpha_t": -1.0}, {"beta_t": -1.0}, {"eta_t": 1.5}, {"eta_t": -1.5}):
+        with pytest.raises(ValueError):
+            v014.tidal_bridge(x, y, r1, r2, **kwargs)

@@ -648,7 +648,59 @@ python pieces/001_last_orbit/experiments/v013_interaction_field.py --alpha-i 8 -
 python pieces/001_last_orbit/experiments/v013_interaction_field.py --strength 0
 ```
 
+### v014 - tidal bridge
+
+The interaction term of v013 is shaped into a bar joining the two holes:
+
+```text
+T  = exp(-A_t y^2) exp(-B_t x^4) I(x, y)
+T' = T [1 + n_t cos(k_t x + p_t)]
+```
+
+and `T'` replaces `I` in the composition, so the field is
+`(F + A_halo + T')(1 - S)`. The `y^2` factor flattens the interaction onto the
+binary axis; the `x^4` factor is what lets it stay bright all the way across
+and then stop.
+
+A quartic is flat-topped where a Gaussian is already curving. Compared at the
+same half-width, `exp(-B x^4)` sits above `exp(-g x^2)` everywhere inside and
+below it everywhere outside: a plateau with a shoulder rather than a peak. That
+is the difference between a bar and a blob. Note this only holds at matched
+half-width; at the same coefficient the quartic is the shallower of the two
+until `x = 1`.
+
+### Two parameters had to move
+
+`I` as tuned in v013 cannot become a bridge. With `A_i = 25` the balance term
+is `exp(-4 A_i x^2)` along the axis, which is `2e-6` of its peak by the time it
+reaches a hole at `x = a`, so the `x^4` factor has nothing left to shape.
+v014 therefore widens it to `A_i = 1.5`, which puts the half-width at `0.29`
+against `a = 0.36`, and raises `A_t` to `120` to thin the bar vertically. The
+result measures `0.29` wide against `0.084` tall, an aspect of about `3.5`.
+
+The internal structure needs a matching wavenumber. At `k_t = 17.5` less than
+one period fits across the bar and the envelope's decay erases the ripple
+entirely, leaving no local minima at all. At `k_t = 32` with `n_t = 0.5` the
+bar breaks into five knots, with dips at `x = +-0.099` and `+-0.302`.
+
+The strength is raised to `1.0`. At v013's `0.35` the bridge adds `0.53` at the
+midpoint where the rest of the field is already at `1.98`, and disappears into
+it. At `1.0` nothing saturates to white and the clipped area only moves from
+`5.8%` to `6.6%`, because the bar sits in a region the warm ramp has headroom
+for.
+
+`T'` alone is symmetric in both axes. The half-turn symmetry of the whole field
+is unchanged.
+
+Render it, slide the knots, or drop the bridge:
+
+```bash
+python pieces/001_last_orbit/experiments/v014_tidal_bridge.py
+python pieces/001_last_orbit/experiments/v014_tidal_bridge.py --bridge-phase 3.14159
+python pieces/001_last_orbit/experiments/v014_tidal_bridge.py --eta-t 0 --strength 0.35
+```
+
 Possible next versions:
 
-- v014: rotating the binary axis with the same phase
-- v015: separation shrinking as the orbit decays
+- v015: rotating the binary axis with the same phase
+- v016: separation shrinking as the orbit decays
