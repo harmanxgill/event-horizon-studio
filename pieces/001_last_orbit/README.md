@@ -829,7 +829,54 @@ python pieces/001_last_orbit/experiments/v016_global_potential.py --kappa-phi 0.
 python pieces/001_last_orbit/experiments/v016_global_potential.py --lambda-p 0
 ```
 
+### v017 - outgoing wave phase
+
+The first structure measured from the centre of the whole binary rather than
+from either hole:
+
+```text
+rho   = sqrt(x^2 + y^2)
+Theta = atan2(y, x)
+```
+
+and a phase that travels outward as the orbit advances:
+
+```text
+Psi = k_g rho - w_g p
+W0  = cos(Psi)
+```
+
+`p` is v011's orbital phase, so the wave and the disks are driven by the same
+parameter. `w_g = 2` because a binary radiates at twice its orbital frequency.
+
+A surface of constant phase satisfies `rho = (Psi + w_g p) / k_g`, so it moves
+outward at `w_g / k_g` per radian of orbit. Measured at the defaults that is
+`0.0714`, and stepping the phase by `0.2`, `0.4` and `0.6` moves the crests by
+exactly that rate. The wavelength is `2 pi / k_g = 0.224`, giving about six
+rings across the frame, and the pattern repeats every `2 pi / w_g` in `p`.
+
+`Theta` is computed but does not appear in `Psi`, so `W0` is a set of perfect
+concentric rings with no angular structure at all. That is the point: the
+angular dependence is what v018 adds, and this version exists to establish the
+coordinates and the travelling phase underneath it.
+
+### Rendered weakly on purpose
+
+`W0` is a cosine, so it is signed, and it enters as `+ L_w W0` with `L_w = 0.05`.
+The rings therefore brighten and darken the field by at most `0.05` either way,
+under `15%` of the local brightness across the lit area. Nothing is driven
+negative: the potential pedestal from v016 sits above the wave's trough
+everywhere outside the horizons, and inside them the silhouette zeroes it.
+
+Render it, or raise the amplitude to see the rings clearly:
+
+```bash
+python pieces/001_last_orbit/experiments/v017_outgoing_wave.py
+python pieces/001_last_orbit/experiments/v017_outgoing_wave.py --lambda-w 0.25
+python pieces/001_last_orbit/experiments/v017_outgoing_wave.py --phase-degrees 45
+```
+
 Possible next versions:
 
-- v017: rotating the binary axis with the same phase
-- v018: separation shrinking as the orbit decays
+- v018: angular structure on the wave, `cos(2 Theta - Psi)`
+- v019: rotating the binary axis with the same phase

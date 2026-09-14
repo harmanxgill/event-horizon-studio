@@ -163,6 +163,15 @@ assert v016_spec.loader is not None
 v016_spec.loader.exec_module(v016)
 
 
+v017_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v017",
+    PIECE_DIR / "experiments" / "v017_outgoing_wave.py",
+)
+v017 = importlib.util.module_from_spec(v017_spec)
+assert v017_spec.loader is not None
+v017_spec.loader.exec_module(v017)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -1770,3 +1779,127 @@ def test_v016_rejects_invalid_potential_parameters() -> None:
         v016.binary_potential(r, r, epsilon=0.0)
     with pytest.raises(ValueError):
         v016.potential_weight(r, r, kappa=-0.1)
+
+
+def test_v017_expression_is_finite() -> None:
+    x, y = v017.coordinate_grids(width=81, height=65)
+    field = v017.v017_field(x, y)
+    rgb = v017.v017_rgb(width=81, height=65)
+
+    assert field.shape == (65, 81)
+    assert np.isfinite(field).all()
+
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+
+
+def test_v017_global_polar_is_centred_on_the_binary() -> None:
+    x, y = v017.coordinate_grids(width=201, height=201)
+    rho, theta = v017.global_polar(x, y)
+
+    assert np.allclose(rho, np.sqrt(x**2 + y**2))
+    assert np.allclose(theta, np.arctan2(y, x))
+
+    assert rho.min() < 0.01
+    assert np.isclose(rho.max(), np.sqrt(2.0), rtol=1.0e-3)
+
+    centre = np.unravel_index(rho.argmin(), rho.shape)
+    assert abs(float(x[centre])) < 0.01 and abs(float(y[centre])) < 0.01
+
+
+def test_v017_phase_matches_the_specification() -> None:
+    rho = np.linspace(0.0, 1.5, 256)
+
+    for k_g, omega_g, phase in ((28.0, 2.0, 0.0), (10.0, 1.0, 0.7), (40.0, 3.0, 2.5)):
+        assert np.allclose(
+            v017.wave_phase(rho, phase=phase, k_g=k_g, omega_g=omega_g),
+            k_g * rho - omega_g * phase,
+        )
+        assert np.allclose(
+            v017.outgoing_wave(rho, phase=phase, k_g=k_g, omega_g=omega_g),
+            np.cos(k_g * rho - omega_g * phase),
+        )
+
+
+def test_v017_wave_is_bounded_and_periodic_in_radius() -> None:
+    rho = np.linspace(0.0, 2.0, 100000)
+    wave = v017.outgoing_wave(rho)
+
+    assert wave.min() >= -1.0 and wave.max() <= 1.0
+    assert np.isclose(wave.min(), -1.0, atol=1.0e-4)
+    assert np.isclose(wave.max(), 1.0, atol=1.0e-4)
+
+    wavelength = 2.0 * np.pi / 28.0
+    shifted = v017.outgoing_wave(rho + wavelength)
+    assert np.allclose(wave, shifted, atol=1.0e-9)
+
+
+def test_v017_crests_travel_outward_with_the_orbital_phase() -> None:
+    rho = np.linspace(0.30, 0.55, 400000)
+
+    def first_crest(phase: float) -> float:
+        wave = v017.outgoing_wave(rho, phase=phase)
+        peaks = np.flatnonzero((wave[1:-1] > wave[:-2]) & (wave[1:-1] > wave[2:])) + 1
+        return float(rho[peaks[0]])
+
+    speed = 2.0 / 28.0
+    base = first_crest(0.0)
+
+    for step in (0.2, 0.4, 0.6):
+        assert np.isclose(first_crest(step) - base, speed * step, atol=1.0e-4)
+
+
+def test_v017_wave_is_periodic_in_the_orbital_phase() -> None:
+    rho = np.linspace(0.0, 1.4, 1000)
+
+    # psi = k*rho - omega*phase, so the wave repeats every 2*pi/omega in phase
+    for omega_g in (1.0, 2.0, 3.0):
+        period = 2.0 * np.pi / omega_g
+        base = v017.outgoing_wave(rho, phase=0.4, omega_g=omega_g)
+
+        assert np.allclose(base, v017.outgoing_wave(rho, phase=0.4 + period, omega_g=omega_g))
+        assert not np.allclose(
+            base, v017.outgoing_wave(rho, phase=0.4 + 0.5 * period, omega_g=omega_g)
+        )
+
+
+def test_v017_theta_is_not_used_by_the_phase_yet() -> None:
+    rho = np.full(64, 0.7)
+    theta = np.linspace(-np.pi, np.pi, 64)
+
+    wave = v017.outgoing_wave(rho)
+
+    assert np.allclose(wave, wave[0])
+    assert np.ptp(theta) > 0.0
+
+
+def test_v017_is_rendered_weakly() -> None:
+    x, y = v017.coordinate_grids(width=300, height=300)
+
+    base = v016.v016_field(x, y)
+    rippled = v017.v017_field(x, y)
+
+    difference = np.abs(rippled - base)
+    assert difference.max() <= 0.05 + 1.0e-12
+    assert difference.max() > 0.0
+
+    lit = base > 0.05
+    assert np.median(difference[lit] / base[lit]) < 0.15
+
+
+def test_v017_reduces_to_v016_without_the_wave() -> None:
+    x, y = v017.coordinate_grids(width=200, height=200)
+
+    assert np.allclose(v017.v017_field(x, y, lambda_w=0.0), v016.v016_field(x, y))
+    assert np.array_equal(v017.v017_rgb(120, 120, lambda_w=0.0), v016.v016_rgb(120, 120))
+
+
+def test_v017_keeps_the_silhouettes_solid() -> None:
+    x, y = v017.coordinate_grids(width=400, height=400)
+    r1, r2 = v017.radial_fields(x, y)
+    field = v017.v017_field(x, y)
+
+    margin = 6.0 * v017.grid_spacing(x, y)
+    inside = np.minimum(r1, r2) <= 0.14 - margin
+    assert inside.any()
+    assert field[inside].max() < 1.0e-2
