@@ -100,6 +100,15 @@ assert v009_spec.loader is not None
 v009_spec.loader.exec_module(v009)
 
 
+v010_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v010",
+    PIECE_DIR / "experiments" / "v010_spiral_decay.py",
+)
+v010 = importlib.util.module_from_spec(v010_spec)
+assert v010_spec.loader is not None
+v010_spec.loader.exec_module(v010)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -848,3 +857,94 @@ def test_v009_rejects_invalid_spiral_parameters() -> None:
         v009.spiral_phase(theta, r, softening=-0.1)
     with pytest.raises(ValueError):
         v009.natural_pitch(order=0)
+
+
+def test_v010_expression_is_finite() -> None:
+    x, y = v010.coordinate_grids(width=81, height=65)
+    field = v010.v010_field(x, y)
+    rgb = v010.v010_rgb(width=81, height=65)
+
+    assert field.shape == (65, 81)
+    assert np.isfinite(field).all()
+
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+
+
+def test_v010_keeps_the_half_turn_symmetry() -> None:
+    x, y = v010.coordinate_grids(width=201, height=201)
+    field = v010.v010_field(x, y)
+
+    assert np.allclose(field, np.rot90(field, 2))
+    assert not np.allclose(field, np.fliplr(field))
+
+
+def test_v010_decay_is_a_falling_exponential() -> None:
+    r = np.linspace(0.0, 2.0, 512)
+
+    assert np.allclose(v010.radial_decay(r, 0.0), 1.0)
+    assert np.allclose(v010.radial_decay(r, 2.0), np.exp(-2.0 * r))
+
+    for decay in (0.5, 2.0, 5.0):
+        weight = v010.radial_decay(r, decay)
+        assert np.all(np.diff(weight) < 0.0)
+        assert np.isclose(weight[0], 1.0)
+        assert weight[-1] < weight[0]
+
+
+def test_v010_stronger_decay_suppresses_the_arms_monotonically() -> None:
+    x, y = v010.coordinate_grids(width=400, height=400)
+    r1, r2 = v010.radial_fields(x, y)
+    theta1, theta2 = v010.angular_fields(x, y)
+
+    previous = None
+    for decay in (0.0, 1.0, 2.0, 5.0):
+        arms = v010.ring_field(r1, r2, theta1, theta2, decay=decay)
+        if previous is not None:
+            assert np.all(arms <= previous + 1.0e-12)
+        previous = arms
+
+
+def test_v010_decay_pulls_the_arm_peak_inward() -> None:
+    r = np.linspace(0.14, 0.9, 4000)
+    envelope = np.exp(-80.0 * (r - 0.25) ** 2)
+
+    peaks = [float(r[(envelope * v010.radial_decay(r, decay)).argmax()]) for decay in (0.0, 2.0, 5.0)]
+
+    assert np.isclose(peaks[0], 0.25, atol=1.0e-3)
+    assert peaks[2] < peaks[1] < peaks[0]
+    for decay, peak in zip((2.0, 5.0), peaks[1:]):
+        assert np.isclose(peak, 0.25 - decay / 160.0, atol=2.0e-3)
+
+
+def test_v010_decay_leaves_the_halo_alone() -> None:
+    x, y = v010.coordinate_grids(width=300, height=300)
+    r1, r2 = v010.radial_fields(x, y)
+
+    plain = v010.halo_field(r1, r2)
+    assert np.allclose(v009.halo_field(r1, r2), plain)
+
+
+def test_v010_reduces_to_v009_without_decay() -> None:
+    x, y = v010.coordinate_grids(width=200, height=200)
+
+    assert np.allclose(v010.v010_field(x, y, decay=0.0), v009.v009_field(x, y))
+    assert np.array_equal(v010.v010_rgb(120, 120, decay=0.0), v009.v009_rgb(120, 120))
+
+
+def test_v010_keeps_the_silhouettes_solid() -> None:
+    x, y = v010.coordinate_grids(width=400, height=400)
+    r1, r2 = v010.radial_fields(x, y)
+    field = v010.v010_field(x, y)
+
+    margin = 6.0 * v010.grid_spacing(x, y)
+    inside = np.minimum(r1, r2) <= 0.14 - margin
+    assert inside.any()
+    assert field[inside].max() < 1.0e-2
+
+
+def test_v010_rejects_negative_decay() -> None:
+    import pytest
+
+    with pytest.raises(ValueError):
+        v010.radial_decay(np.linspace(0.1, 1.0, 8), -0.5)

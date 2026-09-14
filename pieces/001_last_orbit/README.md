@@ -444,7 +444,59 @@ python pieces/001_last_orbit/experiments/v009_log_spiral.py --pitch-degrees 50
 python pieces/001_last_orbit/experiments/v009_log_spiral.py --pitch-degrees 90
 ```
 
+### v010 - spiral radial decay
+
+Each hole's spiral field gains an exponential falloff in its own radius:
+
+```text
+S_i -> S_i exp(-L r_i)
+```
+
+`L` is the new parameter, `2.0` by default, and `L = 0` reproduces v009
+exactly. The halo is untouched: the decay multiplies the ring and arm term
+only.
+
+### What the decay actually does
+
+The arms were never unbounded. `S_i` carries the ring envelope
+`exp(-s(r - r_ring)^2)`, which at the defaults is already `0.0067` of its peak
+at `r = 0.5` and `1e-4` at `r = 0.6`. A Gaussian falls faster than any
+exponential, so `exp(-L r)` cannot be what confines the arms; they were
+confined before it was added.
+
+What `L` does instead is reshape the envelope. Multiplying a Gaussian by a
+falling exponential gives another Gaussian of the same width, shifted inward:
+
+```text
+exp(-s(r - r_ring)^2) exp(-L r) = exp(-s(r - r_ring + L/(2s))^2) k
+```
+
+so the arms peak at `r_ring - L/(2s)`, which is `0.237` at `L = 2` and `0.219`
+at `L = 5`, and the constant `k` dims the whole field. The visible effects are
+therefore an inward pull, a tilt that favours the inner side of each arm over
+the outer, and an overall darkening: peak field falls from `2.32` at `L = 0` to
+`1.45` at `L = 2` and `0.76` at `L = 5`, and clipping from `7.4%` to `2.4%` to
+nothing.
+
+The term that genuinely reaches the edge of the frame is the halo, which falls
+off as `exp(-b(r - r_glow))` with `b = 3.5` and is still at `0.016` of its peak
+in the corners. Applying the decay there as well would be the change that makes
+structure vanish with distance in the sense the ring envelope already handles.
+
+Render it with:
+
+```bash
+python pieces/001_last_orbit/experiments/v010_spiral_decay.py
+```
+
+Decay harder, or switch it off to recover v009:
+
+```bash
+python pieces/001_last_orbit/experiments/v010_spiral_decay.py --decay 5
+python pieces/001_last_orbit/experiments/v010_spiral_decay.py --decay 0
+```
+
 Possible next versions:
 
-- v010: disk distortion toward the companion
-- v011: orbital phase, rotating the binary axis
+- v011: disk distortion toward the companion
+- v012: orbital phase, rotating the binary axis
