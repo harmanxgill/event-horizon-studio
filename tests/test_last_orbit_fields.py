@@ -1144,25 +1144,31 @@ def test_v012_moves_the_ring_by_the_predicted_factor() -> None:
 
 
 def test_v012_leaves_the_horizons_circular() -> None:
-    x, y = v012.coordinate_grids(width=400, height=400)
-    r1, r2 = v012.radial_fields(x, y)
-    edge = v012.grid_spacing(x, y)
+    x, y = v012.coordinate_grids(width=600, height=600)
+    spacing = v012.grid_spacing(x, y)
+    center1, _ = v012.black_hole_centers()
+    means: list[float] = []
 
-    plain = v012.silhouette_field(r1, r2, edge)
+    for epsilon in (-0.3, 0.0, 0.25):
+        field = v012.v012_field(x, y, distortion=epsilon)
 
-    for epsilon in (-0.3, 0.25):
-        theta1, theta2 = v012.angular_fields(x, y)
-        d1, d2 = v012.distorted_radii(r1, r2, theta1, theta2, epsilon)
-        assert not np.allclose(v012.silhouette_field(d1, d2, edge), plain)
+        edges = []
+        for angle in np.linspace(-np.pi, np.pi, 16, endpoint=False):
+            radii = np.linspace(0.02, 0.30, 800)
+            px = center1[0] + radii * np.cos(angle)
+            py = center1[1] + radii * np.sin(angle)
 
-    dark = v012.v012_field(x, y) < 1.0e-3
-    radii = np.minimum(r1, r2)[dark & (radii_mask := radii_guard(r1, r2))]
-    assert radii.max() < 0.145
-    assert radii.min() < 0.01
+            col = np.clip(np.round((px + 1.0) / spacing).astype(int), 0, 599)
+            row = np.clip(np.round((1.0 - py) / spacing).astype(int), 0, 599)
 
+            lit = np.flatnonzero(field[row, col] > 1.0e-3)
+            edges.append(radii[lit[0]])
 
-def radii_guard(r1: np.ndarray, r2: np.ndarray) -> np.ndarray:
-    return np.minimum(r1, r2) < 0.2
+        edges = np.array(edges)
+        assert np.ptp(edges) < 3.0 * spacing
+        means.append(float(edges.mean()))
+
+    assert max(means) - min(means) < spacing
 
 
 def test_v012_leaves_the_halo_undistorted() -> None:

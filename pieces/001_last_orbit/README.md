@@ -547,7 +547,59 @@ python pieces/001_last_orbit/experiments/v011_orbital_phase.py --phase-degrees 9
 python pieces/001_last_orbit/experiments/v011_orbital_phase.py --series
 ```
 
+### v012 - companion-directed distortion
+
+Each hole's disk stops being round. With `e` the distortion strength,
+
+```text
+d(theta) = 1 + e cos(theta)
+r1' = r1 d(theta1),   r2' = r2 d(theta2)
+```
+
+and the disk and spiral terms read `r'` in place of `r`: the ring envelope, the
+logarithmic winding and the radial decay all see the distorted radius. Written
+against the plain angles this is the pair
+
+```text
+d1 = 1 + e cos(atan2(y, x + a)),   d2 = 1 - e cos(atan2(y, x - a))
+```
+
+the sign flip again being the `-pi` that `theta2` already carries.
+
+The distortion uses the unphased angles. The companion sits in a fixed
+direction because the centres do not move, so the stretch should not turn with
+the orbital phase of v011.
+
+### Which way it stretches
+
+The ring is wherever `r' = r_ring`, so it sits at
+
+```text
+r = r_ring / (1 + e cos(theta))
+```
+
+With `e > 0` that is *smaller* toward the companion and larger away from it:
+the disk is pressed in on the facing side and bulges outward, and the gap
+between the holes empties. Stretching toward the companion, which is what this
+version is for, is `e < 0`. The default is `e = -0.30`, which puts the ring at
+`0.357` toward the companion against `0.192` away, and draws both disks into
+the bridge across the middle.
+
+The horizons are untouched. They read the true `r1` and `r2`, so the two black
+disks stay exactly circular at any `e`: measured around a full turn their edge
+varies by under three pixels and does not move when `e` changes. The halo reads
+the true radii too, so the diffuse outer glow stays round while the disks
+deform inside it.
+
+Render it, flip the stretch, or drop back to v011:
+
+```bash
+python pieces/001_last_orbit/experiments/v012_companion_distortion.py
+python pieces/001_last_orbit/experiments/v012_companion_distortion.py --distortion 0.30
+python pieces/001_last_orbit/experiments/v012_companion_distortion.py --distortion 0
+```
+
 Possible next versions:
 
-- v012: rotating the binary axis with the same phase
-- v013: disk distortion toward the companion
+- v013: rotating the binary axis with the same phase
+- v014: separation shrinking as the orbit decays
