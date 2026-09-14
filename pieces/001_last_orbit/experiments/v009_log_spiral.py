@@ -13,57 +13,12 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from event_horizon.fields import polar_angle, soft_horizon
-from event_horizon.utils import save_rgb_image
+from event_horizon.cli import experiment_parser, save_and_report
+from event_horizon.color import warm_rgb
+from event_horizon.geometry import angular_fields, black_hole_centers, coordinate_grids, grid_spacing, radial_fields, wrap_angle
 
 
 DEFAULT_OUTPUT = Path(__file__).resolve().parent / "v009_log_spiral.png"
-
-
-def coordinate_grids(width: int, height: int) -> tuple[np.ndarray, np.ndarray]:
-    if width <= 0 or height <= 0:
-        raise ValueError("width and height must be positive")
-
-    x_values = np.linspace(-1.0, 1.0, width)
-    y_values = np.linspace(1.0, -1.0, height)
-    return np.meshgrid(x_values, y_values)
-
-
-def grid_spacing(x: np.ndarray, y: np.ndarray) -> float:
-    dx = abs(float(x[0, 1] - x[0, 0])) if x.shape[1] > 1 else 0.0
-    dy = abs(float(y[1, 0] - y[0, 0])) if y.shape[0] > 1 else 0.0
-    spacing = max(dx, dy)
-    if spacing <= 0.0:
-        raise ValueError("grid must sample more than one point along an axis")
-    return spacing
-
-
-def black_hole_centers(a: float = 0.36) -> tuple[tuple[float, float], tuple[float, float]]:
-    return (-float(a), 0.0), (float(a), 0.0)
-
-
-def radial_fields(
-    x: np.ndarray,
-    y: np.ndarray,
-    a: float = 0.36,
-) -> tuple[np.ndarray, np.ndarray]:
-    r1 = np.sqrt((x + a) ** 2 + y**2)
-    r2 = np.sqrt((x - a) ** 2 + y**2)
-    return r1, r2
-
-
-def wrap_angle(theta: np.ndarray) -> np.ndarray:
-    return np.arctan2(np.sin(theta), np.cos(theta))
-
-
-def angular_fields(
-    x: np.ndarray,
-    y: np.ndarray,
-    a: float = 0.36,
-) -> tuple[np.ndarray, np.ndarray]:
-    center1, center2 = black_hole_centers(a=a)
-    theta1 = polar_angle(x, y, center1)
-    theta2 = wrap_angle(polar_angle(x, y, center2) - np.pi)
-    return theta1, theta2
 
 
 def angular_weight(theta: np.ndarray, anisotropy: float = 0.20) -> np.ndarray:
@@ -319,18 +274,11 @@ def v009_rgb(
         pitch=pitch,
     )
 
-    red = np.clip(1.10 * f, 0.0, 1.0)
-    green = np.clip(0.58 * f, 0.0, 1.0)
-    blue = np.clip(0.18 * f, 0.0, 1.0)
-
-    return np.round(np.dstack([red, green, blue]) * 255.0).astype(np.uint8)
+    return warm_rgb(f)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Render v009 - logarithmic spiral.")
-    parser.add_argument("--width", type=int, default=1200)
-    parser.add_argument("--height", type=int, default=1200)
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser = experiment_parser("Render v009 - logarithmic spiral.", DEFAULT_OUTPUT)
     parser.add_argument("--a", type=float, default=0.36)
     parser.add_argument("--ring-radius", type=float, default=0.25)
     parser.add_argument("--sharpness", type=float, default=80.0)
@@ -368,8 +316,7 @@ def main() -> None:
         exponent=args.exponent,
         pitch=None if args.pitch_degrees is None else np.radians(args.pitch_degrees),
     )
-    output_path = save_rgb_image(args.output, rgb)
-    print(f"saved {output_path}")
+    save_and_report(args.output, rgb)
 
 
 if __name__ == "__main__":

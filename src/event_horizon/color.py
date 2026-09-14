@@ -48,3 +48,11 @@ def paint_mask(
     result = np.array(rgb, copy=True)
     result[np.asarray(mask, dtype=bool)] = np.asarray(color, dtype=result.dtype)
     return result
+
+
+def warm_rgb(field: np.ndarray) -> np.ndarray:
+    red = np.clip(1.10 * field, 0.0, 1.0)
+    green = np.clip(0.58 * field, 0.0, 1.0)
+    blue = np.clip(0.18 * field, 0.0, 1.0)
+
+    return np.round(np.dstack([red, green, blue]) * 255.0).astype(np.uint8)

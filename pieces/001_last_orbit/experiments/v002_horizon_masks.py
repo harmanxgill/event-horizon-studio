@@ -13,29 +13,12 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from event_horizon.fields import soft_horizon
-from event_horizon.utils import save_rgb_image
+from event_horizon.cli import experiment_parser, save_and_report
+from event_horizon.color import warm_rgb
+from event_horizon.geometry import coordinate_grids, radial_fields
 
 
 DEFAULT_OUTPUT = Path(__file__).resolve().parent / "v002_horizon_masks.png"
-
-
-def coordinate_grids(width: int, height: int) -> tuple[np.ndarray, np.ndarray]:
-    if width <= 0 or height <= 0:
-        raise ValueError("width and height must be positive")
-
-    x_values = np.linspace(-1.0, 1.0, width)
-    y_values = np.linspace(1.0, -1.0, height)
-    return np.meshgrid(x_values, y_values)
-
-
-def radial_fields(
-    x: np.ndarray,
-    y: np.ndarray,
-    a: float = 0.36,
-) -> tuple[np.ndarray, np.ndarray]:
-    r1 = np.sqrt((x + a) ** 2 + y**2)
-    r2 = np.sqrt((x - a) ** 2 + y**2)
-    return r1, r2
 
 
 def ring_field(
@@ -95,18 +78,11 @@ def v002_rgb(
         horizon_edge=horizon_edge,
     )
 
-    red = np.clip(1.10 * f, 0.0, 1.0)
-    green = np.clip(0.58 * f, 0.0, 1.0)
-    blue = np.clip(0.18 * f, 0.0, 1.0)
-
-    return np.round(np.dstack([red, green, blue]) * 255.0).astype(np.uint8)
+    return warm_rgb(f)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Render v002 - horizon masks.")
-    parser.add_argument("--width", type=int, default=1200)
-    parser.add_argument("--height", type=int, default=1200)
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser = experiment_parser("Render v002 - horizon masks.", DEFAULT_OUTPUT)
     parser.add_argument("--a", type=float, default=0.36)
     parser.add_argument("--ring-radius", type=float, default=0.25)
     parser.add_argument("--sharpness", type=float, default=80.0)
@@ -126,8 +102,7 @@ def main() -> None:
         horizon_radius=args.horizon_radius,
         horizon_edge=args.horizon_edge,
     )
-    output_path = save_rgb_image(args.output, rgb)
-    print(f"saved {output_path}")
+    save_and_report(args.output, rgb)
 
 
 if __name__ == "__main__":
