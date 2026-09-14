@@ -385,7 +385,66 @@ python pieces/001_last_orbit/experiments/v008_coupled_radius.py --twist 16
 python pieces/001_last_orbit/experiments/v008_coupled_radius.py --twist 0
 ```
 
+### v009 - logarithmic spiral
+
+v008 bends the lobes, but not into a spiral. Its shift is linear in radius, and
+a constant-phase curve of `theta + q(r - r_ring)` has
+
+```text
+tan(pitch) = 1 / (q r)
+```
+
+so the arms are shallow far out and steep close in. Measured at the v008
+defaults the pitch runs from `43.6` degrees at `r = 0.15` to `14.6` degrees at
+`r = 0.55`: a curve that is bent, but not a spiral.
+
+A logarithmic spiral is the curve that crosses every radius at the same angle.
+Writing it as `r = r_ring exp(theta tan(psi))` and solving for the phase,
+
+```text
+phi(r, theta) = theta - ln(r / r_ring) / tan(psi)
+```
+
+Now `tan(pitch) = tan(psi)` at every radius, with no dependence on `r` at all.
+That self-similarity is what makes the arms read as arms: each one keeps its
+character as it winds outward instead of flattening.
+
+`r` appears inside a logarithm, so the phase diverges at the centre. The radius
+is softened the same way `equations.py` softens its inverse fields:
+
+```text
+r_soft = sqrt(r^2 + e^2)
+```
+
+with `e = 0.02`, far inside the horizon, so the guard never touches anything
+visible.
+
+The pitch has the same natural scale as v008's twist. Across one ring width the
+logarithmic span is `1 / (sqrt(s) r_ring)`, and asking the arms to wind half a
+lobe over that span fixes
+
+```text
+tan(psi) = m / (pi sqrt(s) r_ring)
+```
+
+which is `29.7` degrees at the defaults. Shallower angles wind tighter; at
+`psi = 90` degrees the winding vanishes and v007 comes back.
+
+Render it with:
+
+```bash
+python pieces/001_last_orbit/experiments/v009_log_spiral.py
+```
+
+Wind it tighter, open it out, or unwind it entirely:
+
+```bash
+python pieces/001_last_orbit/experiments/v009_log_spiral.py --pitch-degrees 15
+python pieces/001_last_orbit/experiments/v009_log_spiral.py --pitch-degrees 50
+python pieces/001_last_orbit/experiments/v009_log_spiral.py --pitch-degrees 90
+```
+
 Possible next versions:
 
-- v009: disk distortion toward the companion
-- v010: orbital phase, rotating the binary axis
+- v010: disk distortion toward the companion
+- v011: orbital phase, rotating the binary axis

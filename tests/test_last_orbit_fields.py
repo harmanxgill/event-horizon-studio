@@ -91,6 +91,15 @@ assert v008_spec.loader is not None
 v008_spec.loader.exec_module(v008)
 
 
+v009_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v009",
+    PIECE_DIR / "experiments" / "v009_log_spiral.py",
+)
+v009 = importlib.util.module_from_spec(v009_spec)
+assert v009_spec.loader is not None
+v009_spec.loader.exec_module(v009)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -712,3 +721,130 @@ def test_v008_rejects_invalid_twist_parameters() -> None:
             v008.natural_twist(order=bad_order)
     with pytest.raises(ValueError):
         v008.natural_twist(sharpness=0.0)
+
+
+def _local_pitch(phase, radius: float, step: float = 1.0e-6) -> float:
+    theta = np.array([0.0])
+    r = np.array([radius])
+
+    d_theta = (phase(theta + step, r) - phase(theta - step, r)) / (2.0 * step)
+    d_r = (phase(theta, r + step) - phase(theta, r - step)) / (2.0 * step)
+
+    return float(np.degrees(np.arctan(np.abs(d_theta / d_r) / radius)[0]))
+
+
+def test_v009_expression_is_finite() -> None:
+    x, y = v009.coordinate_grids(width=81, height=65)
+    field = v009.v009_field(x, y)
+    rgb = v009.v009_rgb(width=81, height=65)
+
+    assert field.shape == (65, 81)
+    assert np.isfinite(field).all()
+
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+
+
+def test_v009_keeps_the_half_turn_symmetry() -> None:
+    x, y = v009.coordinate_grids(width=201, height=201)
+    field = v009.v009_field(x, y)
+
+    assert np.allclose(field, np.rot90(field, 2))
+    assert not np.allclose(field, np.fliplr(field))
+
+
+def test_v009_pitch_angle_is_the_same_at_every_radius() -> None:
+    for pitch_degrees in (15.0, 29.66, 45.0):
+        pitch = np.radians(pitch_degrees)
+        phase = lambda t, r: v009.spiral_phase(t, r, pitch=pitch, softening=0.0)
+
+        measured = [_local_pitch(phase, radius) for radius in (0.15, 0.25, 0.40, 0.70)]
+
+        assert np.allclose(measured, pitch_degrees, atol=1.0e-3)
+
+
+def test_v009_pitch_is_constant_where_v008_twist_is_not() -> None:
+    radii = (0.15, 0.25, 0.40, 0.55)
+
+    linear = [_local_pitch(lambda t, r: v008.coupled_angle(t, r), radius) for radius in radii]
+    logarithmic = [
+        _local_pitch(lambda t, r: v009.spiral_phase(t, r, softening=0.0), radius)
+        for radius in radii
+    ]
+
+    assert max(linear) - min(linear) > 20.0
+    assert max(logarithmic) - min(logarithmic) < 1.0e-3
+
+
+def test_v009_phase_traces_a_logarithmic_spiral() -> None:
+    pitch = np.radians(29.66)
+    winding = 1.0 / np.tan(pitch)
+
+    theta = np.linspace(0.0, 4.0 * np.pi, 512)
+    r = 0.25 * np.exp(np.tan(pitch) * theta)
+
+    phase = v009.spiral_phase(theta, r, pitch=pitch, softening=0.0)
+
+    assert np.allclose(phase, phase[0])
+    assert np.isclose(winding, 1.0 / np.tan(pitch))
+
+
+def test_v009_natural_pitch_winds_half_a_lobe_per_ring_width() -> None:
+    for order in (2, 4, 6):
+        for sharpness in (40.0, 80.0):
+            pitch = v009.natural_pitch(order=order, sharpness=sharpness, ring_radius=0.25)
+
+            log_span = (1.0 / np.sqrt(sharpness)) / 0.25
+            winding = log_span / np.tan(pitch)
+
+            assert np.isclose(winding, np.pi / order)
+
+
+def test_v009_reduces_to_v007_at_a_right_angle_pitch() -> None:
+    x, y = v009.coordinate_grids(width=200, height=200)
+
+    assert np.allclose(v009.v009_field(x, y, pitch=0.5 * np.pi), v007.v007_field(x, y))
+
+
+def test_v009_softening_keeps_the_phase_finite_at_the_origin() -> None:
+    theta = np.zeros(1)
+
+    assert np.isfinite(v009.spiral_phase(theta, np.zeros(1))).all()
+
+    with np.errstate(divide="ignore"):
+        unguarded = v009.spiral_phase(theta, np.zeros(1), softening=0.0)
+    assert not np.isfinite(unguarded).all()
+
+
+def test_v009_twist_preserves_brightness_at_every_radius() -> None:
+    theta = np.linspace(-np.pi, np.pi, 8192, endpoint=False)
+
+    for r in (0.10, 0.25, 0.40, 0.75):
+        phi = v009.spiral_phase(theta, np.full_like(theta, r))
+        assert np.isclose(v009.ring_weight(phi).mean(), 1.0, atol=1.0e-9)
+
+
+def test_v009_keeps_the_silhouettes_solid() -> None:
+    x, y = v009.coordinate_grids(width=400, height=400)
+    r1, r2 = v009.radial_fields(x, y)
+    field = v009.v009_field(x, y)
+
+    margin = 6.0 * v009.grid_spacing(x, y)
+    inside = np.minimum(r1, r2) <= 0.14 - margin
+    assert inside.any()
+    assert field[inside].max() < 1.0e-2
+
+
+def test_v009_rejects_invalid_spiral_parameters() -> None:
+    import pytest
+
+    theta = np.zeros(4)
+    r = np.full(4, 0.3)
+
+    for bad_pitch in (0.0, -0.2, 2.0):
+        with pytest.raises(ValueError):
+            v009.spiral_phase(theta, r, pitch=bad_pitch)
+    with pytest.raises(ValueError):
+        v009.spiral_phase(theta, r, softening=-0.1)
+    with pytest.raises(ValueError):
+        v009.natural_pitch(order=0)
