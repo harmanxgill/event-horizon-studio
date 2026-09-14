@@ -145,6 +145,15 @@ assert v014_spec.loader is not None
 v014_spec.loader.exec_module(v014)
 
 
+v015_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v015",
+    PIECE_DIR / "experiments" / "v015_tidal_tails.py",
+)
+v015 = importlib.util.module_from_spec(v015_spec)
+assert v015_spec.loader is not None
+v015_spec.loader.exec_module(v015)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -1488,3 +1497,140 @@ def test_v014_rejects_invalid_bridge_parameters() -> None:
     for kwargs in ({"alpha_t": -1.0}, {"beta_t": -1.0}, {"eta_t": 1.5}, {"eta_t": -1.5}):
         with pytest.raises(ValueError):
             v014.tidal_bridge(x, y, r1, r2, **kwargs)
+
+
+def test_v015_expression_is_finite() -> None:
+    x, y = v015.coordinate_grids(width=81, height=65)
+    field = v015.v015_field(x, y)
+    rgb = v015.v015_rgb(width=81, height=65)
+
+    assert field.shape == (65, 81)
+    assert np.isfinite(field).all()
+
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+
+
+def test_v015_matches_the_specified_sum() -> None:
+    x, y = v015.coordinate_grids(width=121, height=121)
+    r1, r2 = v015.radial_fields(x, y)
+    theta1, theta2 = v015.plain_angles(x, y)
+
+    for alpha_q, radius_q, c_q, beta_q in ((150.0, 0.45, 0.25, 1.5), (60.0, 0.6, -0.4, 0.8)):
+        q1 = np.exp(-alpha_q * (r1 - radius_q - c_q * theta1) ** 2) * np.exp(-beta_q * r1)
+        q2 = np.exp(-alpha_q * (r2 - radius_q + c_q * theta2) ** 2) * np.exp(-beta_q * r2)
+
+        actual = v015.tidal_tails(
+            r1, r2, theta1, theta2,
+            alpha_q=alpha_q, radius_q=radius_q, c_q=c_q, beta_q=beta_q,
+            tails=1.0, taper=0.0,
+        )
+        assert np.allclose(actual, q1 + q2)
+
+
+def test_v015_plain_angles_differ_from_the_anchored_ones_by_half_a_turn() -> None:
+    x, y = v015.coordinate_grids(width=101, height=101)
+
+    plain1, plain2 = v015.plain_angles(x, y)
+    anchored1, anchored2 = v015.angular_fields(x, y)
+
+    assert np.allclose(plain1, anchored1)
+    assert np.allclose(np.cos(plain2), np.cos(anchored2 + np.pi))
+    assert np.allclose(np.sin(plain2), np.sin(anchored2 + np.pi))
+
+
+def test_v015_ridge_follows_an_archimedean_spiral() -> None:
+    theta = np.linspace(-1.5, 3.0, 400)
+    radius_q, c_q = 0.45, 0.25
+
+    on_ridge = radius_q + c_q * theta
+    argument = on_ridge - radius_q - c_q * theta
+
+    assert np.allclose(argument, 0.0)
+    assert np.allclose(np.diff(on_ridge) / np.diff(theta), c_q)
+
+
+def test_v015_taper_removes_the_branch_cut_discontinuity() -> None:
+    x, y = v015.coordinate_grids(width=1000, height=1000)
+    r1, r2 = v015.radial_fields(x, y)
+    theta1, theta2 = v015.plain_angles(x, y)
+
+    col = int(np.argmin(np.abs(x[0] + 0.8)))
+    row = int(np.argmin(np.abs(y[:, col])))
+
+    def seam(taper: float) -> float:
+        q = v015.tidal_tails(r1, r2, theta1, theta2, taper=taper)
+        return abs(float(q[row - 1, col] - q[row + 1, col]))
+
+    assert seam(0.0) > 0.03
+    assert seam(0.5) < 1.0e-6
+
+
+def test_v015_taper_vanishes_on_the_cut_and_is_inert_away_from_it() -> None:
+    theta = np.linspace(-np.pi, np.pi, 2001)
+    taper = v015.tail_taper(theta, 0.5)
+
+    assert np.isclose(taper[0], 0.0, atol=1.0e-12)
+    assert np.isclose(taper[-1], 0.0, atol=1.0e-12)
+    assert taper[np.abs(theta) < np.pi - 1.5].min() > 0.99
+    assert np.allclose(v015.tail_taper(theta, 0.0), 1.0)
+
+
+def test_v015_tails_break_the_half_turn_symmetry() -> None:
+    x, y = v015.coordinate_grids(width=301, height=301)
+    r1, r2 = v015.radial_fields(x, y)
+    theta1, theta2 = v015.plain_angles(x, y)
+
+    tails = v015.tidal_tails(r1, r2, theta1, theta2)
+    residual = np.abs(tails - np.rot90(tails, 2)).max()
+
+    assert residual > 0.5 * tails.max()
+
+    field = v015.v015_field(x, y)
+    assert not np.allclose(field, np.rot90(field, 2))
+    assert not np.allclose(field, np.fliplr(field))
+
+
+def test_v015_anchored_angles_with_one_sign_would_restore_it() -> None:
+    x, y = v015.coordinate_grids(width=301, height=301)
+    r1, r2 = v015.radial_fields(x, y)
+    anchored1, anchored2 = v015.angular_fields(x, y)
+
+    def arm(r: np.ndarray, theta: np.ndarray) -> np.ndarray:
+        ridge = np.exp(-150.0 * (r - 0.45 - 0.25 * theta) ** 2)
+        return ridge * np.exp(-1.5 * r) * v015.tail_taper(theta, 0.5)
+
+    symmetric = arm(r1, anchored1) + arm(r2, anchored2)
+
+    assert np.allclose(symmetric, np.rot90(symmetric, 2), atol=1.0e-12)
+
+
+def test_v015_reduces_to_v014_without_tails() -> None:
+    x, y = v015.coordinate_grids(width=200, height=200)
+
+    assert np.allclose(v015.v015_field(x, y, tails=0.0), v014.v014_field(x, y))
+    assert np.array_equal(v015.v015_rgb(120, 120, tails=0.0), v014.v014_rgb(120, 120))
+
+
+def test_v015_keeps_the_silhouettes_solid() -> None:
+    x, y = v015.coordinate_grids(width=400, height=400)
+    r1, r2 = v015.radial_fields(x, y)
+    field = v015.v015_field(x, y)
+
+    margin = 6.0 * v015.grid_spacing(x, y)
+    inside = np.minimum(r1, r2) <= 0.14 - margin
+    assert inside.any()
+    assert field[inside].max() < 1.0e-2
+
+
+def test_v015_rejects_invalid_tail_parameters() -> None:
+    import pytest
+
+    r = np.full(4, 0.5)
+    t = np.zeros(4)
+
+    for kwargs in ({"alpha_q": -1.0}, {"beta_q": -1.0}, {"tails": -0.1}):
+        with pytest.raises(ValueError):
+            v015.tidal_tails(r, r, t, t, **kwargs)
+    with pytest.raises(ValueError):
+        v015.tail_taper(t, -0.5)

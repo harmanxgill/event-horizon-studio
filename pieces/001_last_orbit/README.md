@@ -700,7 +700,81 @@ python pieces/001_last_orbit/experiments/v014_tidal_bridge.py --bridge-phase 3.1
 python pieces/001_last_orbit/experiments/v014_tidal_bridge.py --eta-t 0 --strength 0.35
 ```
 
+### v015 - tidal tails
+
+Material thrown outward from each hole, added to the composition alongside the
+bridge:
+
+```text
+Q1 = exp(-A_q (r1 - R_q - c_q t1)^2) exp(-B_q r1)
+Q2 = exp(-A_q (r2 - R_q + c_q t2)^2) exp(-B_q r2)
+Q  = Q1 + Q2
+```
+
+The ridge of each Gaussian is `r = R_q +- c_q t`, an Archimedean spiral: radius
+growing linearly with angle, unlike v009's logarithmic winding inside the
+disks. `B_q` fades the arm with distance so it thins out rather than running to
+the frame edge.
+
+These use the plain angles, `t2 = atan2(y, x - a)`, not the companion-anchored
+`theta2` the rest of the piece uses, so the written formula is exactly the one
+above.
+
+### This is the first version with no symmetry
+
+Every version from v006 to v014 satisfies `G(-x, -y) = G(x, y)`. `Q` does not,
+and the opposite signs are why. Under a half turn `r1 -> r2` and
+`t2(-P) = t1(P) + pi`, so
+
+```text
+Q2(-P) = exp(-A_q (r1 - (R_q - c_q pi) + c_q t1)^2) exp(-B_q r1)
+```
+
+which differs from `Q1(P)` in the sign of `c_q t1` *and* by a shift of `c_q pi`
+in the base radius. Measured, the half-turn residual on `Q` is `87%` of its own
+peak. Matching the signs does not fix it either: that leaves the `c_q pi` shift
+and the residual rises to `100%`.
+
+The form that does restore it exactly is the same sign together with the
+companion-anchored angles, since those satisfy `theta1(P) = theta2(-P)` with no
+offset:
+
+```text
+Q = q(r1, theta1) + q(r2, theta2),   q(r, t) = exp(-A_q (r - R_q - c_q t)^2) exp(-B_q r)
+```
+
+which measures a residual of `6e-14`. v015 keeps the asymmetric form as
+specified; the symmetric one is a one-line change if the pinwheel is wanted
+back.
+
+### The branch cut
+
+`r = R_q + c_q t` needs a continuous angle, but `atan2` jumps at `+-pi`, and on
+the far side of the jump the ridge radius `R_q - c_q pi` is negative, so no arm
+exists there. The arm is therefore sliced along a straight ray rather than
+ending: an `8%` of peak step across a single pixel, clearly visible as a
+horizontal seam to the left of the frame.
+
+A taper closes it:
+
+```text
+w(t) = 1 - exp(-((pi - |t|) / u)^2)
+```
+
+zero on the cut and above `0.99` once `|t|` is more than `1.5` radians from it,
+so it fades the far tip of each arm and leaves the rest alone. The seam goes to
+zero and the peak moves from `0.5970` to `0.5966`. `--taper 0` restores the
+literal formula and the seam with it.
+
+Render it, lengthen the arms, or drop them:
+
+```bash
+python pieces/001_last_orbit/experiments/v015_tidal_tails.py
+python pieces/001_last_orbit/experiments/v015_tidal_tails.py --c-q 0.4 --beta-q 1.0
+python pieces/001_last_orbit/experiments/v015_tidal_tails.py --tails 0
+```
+
 Possible next versions:
 
-- v015: rotating the binary axis with the same phase
-- v016: separation shrinking as the orbit decays
+- v016: rotating the binary axis with the same phase
+- v017: separation shrinking as the orbit decays
