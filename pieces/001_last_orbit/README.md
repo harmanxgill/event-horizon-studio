@@ -876,7 +876,61 @@ python pieces/001_last_orbit/experiments/v017_outgoing_wave.py --lambda-w 0.25
 python pieces/001_last_orbit/experiments/v017_outgoing_wave.py --phase-degrees 45
 ```
 
+### v018 - quadrupolar field
+
+v017's rings gain the angular structure a binary actually radiates with:
+
+```text
+W = cos(2 Theta - k_g rho + w_g p) / (1 + g_w rho)
+```
+
+The `2 Theta` is the whole point. At any fixed radius the wave has exactly two
+crests instead of being constant around the circle, and a ridge satisfies
+`2 Theta - k_g rho = const`, so the angle advances at `k_g / 2` with radius: a
+two-armed spiral rather than concentric rings. The amplitude `1 / (1 + g_w rho)`
+falls from `1.0` at the centre to `0.26` at the corners with `g_w = 2`.
+
+The test that v017's phase had no angular dependence now has a counterpart
+asserting this one has exactly two lobes at every radius.
+
+### Multiplied, and replacing v017
+
+The specification is explicit here where v016's was not:
+
+```text
+F18 = F16 [1 + e_w W]
+```
+
+so `W` scales the intensity rather than adding to it, and it is `F16` being
+scaled, not `F17`. v017's additive `L_w W0` term is therefore gone rather than
+stacked underneath: that version existed to establish the coordinates and the
+travelling phase, and this one supersedes it. Setting `e_w = 0` gives back v016
+exactly, not v017.
+
+The difference between the two forms is visible. v017 added a signed cosine, so
+its rings appeared everywhere including the dark corners. v018 multiplies, so
+the wave can only shape light that is already there: where the field is below
+`1e-4` it stays below `1e-4`, and the two-armed pattern reads as a slow banding
+across the halo rather than rings on black.
+
+`e_w = 0.10` keeps it small, as asked. The modulation is bounded by `+-e_w`
+exactly, since `|W| <= 1`, and across the lit area it changes brightness by
+`9.8%` at most and `2.7%` typically. The horizons are untouched: the mask is
+applied after the modulation, so both black disks stay exactly black.
+
+`W` is itself half-turn symmetric, because `cos(2 Theta)` has period `pi`. It
+does not restore the symmetry the tails broke in v015, but it does not add to
+the breakage either.
+
+Render it, or push the wave until it is obvious:
+
+```bash
+python pieces/001_last_orbit/experiments/v018_quadrupolar_field.py
+python pieces/001_last_orbit/experiments/v018_quadrupolar_field.py --epsilon-w 0.4
+python pieces/001_last_orbit/experiments/v018_quadrupolar_field.py --gamma-w 0.3 --k-g 14
+```
+
 Possible next versions:
 
-- v018: angular structure on the wave, `cos(2 Theta - Psi)`
 - v019: rotating the binary axis with the same phase
+- v020: separation shrinking as the orbit decays

@@ -172,6 +172,15 @@ assert v017_spec.loader is not None
 v017_spec.loader.exec_module(v017)
 
 
+v018_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v018",
+    PIECE_DIR / "experiments" / "v018_quadrupolar_field.py",
+)
+v018 = importlib.util.module_from_spec(v018_spec)
+assert v018_spec.loader is not None
+v018_spec.loader.exec_module(v018)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -1903,3 +1912,129 @@ def test_v017_keeps_the_silhouettes_solid() -> None:
     inside = np.minimum(r1, r2) <= 0.14 - margin
     assert inside.any()
     assert field[inside].max() < 1.0e-2
+
+
+def test_v018_expression_is_finite() -> None:
+    x, y = v018.coordinate_grids(width=81, height=65)
+    field = v018.v018_field(x, y)
+    rgb = v018.v018_rgb(width=81, height=65)
+
+    assert field.shape == (65, 81)
+    assert np.isfinite(field).all()
+
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+
+
+def test_v018_matches_the_boxed_formula() -> None:
+    x, y = v018.coordinate_grids(width=121, height=121)
+    rho, theta = v018.global_polar(x, y)
+
+    for k_g, omega_g, gamma_w, phase in ((28.0, 2.0, 2.0, 0.0), (12.0, 1.0, 0.5, 1.3)):
+        expected = np.cos(2.0 * theta - k_g * rho + omega_g * phase) / (1.0 + gamma_w * rho)
+        actual = v018.quadrupole_wave(
+            rho, theta, phase=phase, k_g=k_g, omega_g=omega_g, gamma_w=gamma_w
+        )
+        assert np.allclose(actual, expected)
+
+
+def test_v018_amplitude_decays_monotonically() -> None:
+    rho = np.linspace(0.0, 2.0, 1000)
+
+    for gamma_w in (0.5, 2.0, 5.0):
+        amplitude = v018.wave_amplitude(rho, gamma_w)
+
+        assert np.isclose(amplitude[0], 1.0)
+        assert np.all(np.diff(amplitude) < 0.0)
+        assert np.allclose(amplitude, 1.0 / (1.0 + gamma_w * rho))
+
+    assert np.allclose(v018.wave_amplitude(rho, 0.0), 1.0)
+
+
+def test_v018_has_two_angular_lobes_at_every_radius() -> None:
+    theta = np.linspace(-np.pi, np.pi, 20000, endpoint=False)
+
+    for radius in (0.2, 0.5, 0.9, 1.3):
+        rho = np.full_like(theta, radius)
+        wave = v018.quadrupole_wave(rho, theta)
+
+        crests = (wave > np.roll(wave, 1)) & (wave > np.roll(wave, -1))
+        assert int(crests.sum()) == 2
+
+
+def test_v018_wave_is_half_turn_symmetric() -> None:
+    x, y = v018.coordinate_grids(width=201, height=201)
+    rho, theta = v018.global_polar(x, y)
+
+    wave = v018.quadrupole_wave(rho, theta)
+
+    assert np.allclose(wave, np.rot90(wave, 2))
+
+
+def test_v018_pattern_winds_as_a_two_armed_spiral() -> None:
+    k_g = 28.0
+    rho = np.linspace(0.3, 0.9, 5000)
+
+    # a ridge satisfies 2*theta - k_g*rho = const, so theta advances at k_g / 2
+    theta = 0.5 * (k_g * rho)
+    wave = v018.quadrupole_wave(rho, theta, gamma_w=0.0)
+
+    assert np.allclose(wave, 1.0, atol=1.0e-9)
+
+
+def test_v018_modulation_cannot_create_light() -> None:
+    x, y = v018.coordinate_grids(width=400, height=400)
+
+    base = v016.v016_field(x, y)
+    modulated = v018.v018_field(x, y)
+
+    dark = base < 1.0e-4
+    assert dark.any()
+    assert modulated[dark].max() < 1.1e-4
+
+    lit = base > 0.05
+    ratio = modulated[lit] / base[lit]
+    assert ratio.min() > 1.0 - 0.10 - 1.0e-9
+    assert ratio.max() < 1.0 + 0.10 + 1.0e-9
+
+
+def test_v018_is_a_small_perturbation() -> None:
+    x, y = v018.coordinate_grids(width=300, height=300)
+
+    base = v016.v016_field(x, y)
+    lit = base > 0.05
+    relative = np.abs(v018.v018_field(x, y) - base)[lit] / base[lit]
+
+    assert relative.max() < 0.11
+    assert np.median(relative) < 0.05
+
+
+def test_v018_supersedes_the_v017_placeholder() -> None:
+    x, y = v018.coordinate_grids(width=200, height=200)
+
+    # F18 = F16 [1 + e_w W], so the additive v017 term is gone, not stacked
+    assert np.allclose(v018.v018_field(x, y, epsilon_w=0.0), v016.v016_field(x, y))
+    assert not np.allclose(v018.v018_field(x, y, epsilon_w=0.0), v017.v017_field(x, y))
+
+
+def test_v018_keeps_the_silhouettes_solid() -> None:
+    x, y = v018.coordinate_grids(width=400, height=400)
+    r1, r2 = v018.radial_fields(x, y)
+    field = v018.v018_field(x, y)
+
+    margin = 6.0 * v018.grid_spacing(x, y)
+    inside = np.minimum(r1, r2) <= 0.14 - margin
+    assert inside.any()
+    assert field[inside].max() < 1.0e-2
+
+
+def test_v018_rejects_invalid_wave_parameters() -> None:
+    import pytest
+
+    x, y = v018.coordinate_grids(width=16, height=16)
+
+    with pytest.raises(ValueError):
+        v018.wave_amplitude(np.linspace(0.1, 1.0, 8), -1.0)
+    for bad in (1.0, -1.0, 2.5):
+        with pytest.raises(ValueError):
+            v018.v018_field(x, y, epsilon_w=bad)
