@@ -14,7 +14,7 @@ Finished images can go in `gallery/`.
 
 | Piece | Status | Notes |
 | --- | --- | --- |
-| [001 - The Last Orbit](https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit "https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit") | v012 | Equal-mass binary black holes in the final orbit before merger. |
+| [001 - The Last Orbit](https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit "https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit") | v013 | Equal-mass binary black holes in the final orbit before merger. |
 
 ## Installation
 
@@ -29,13 +29,13 @@ pip install -e ".[dev]"
 Render the latest version:
 
 ```bash
-python pieces/001_last_orbit/experiments/v012_companion_distortion.py
+python pieces/001_last_orbit/experiments/v013_interaction_field.py
 ```
 
 Render it smaller:
 
 ```bash
-python pieces/001_last_orbit/experiments/v012_companion_distortion.py --width 512 --height 512
+python pieces/001_last_orbit/experiments/v013_interaction_field.py --width 512 --height 512
 ```
 
 Earlier versions still render on their own:
@@ -52,6 +52,7 @@ python pieces/001_last_orbit/experiments/v008_coupled_radius.py
 python pieces/001_last_orbit/experiments/v009_log_spiral.py
 python pieces/001_last_orbit/experiments/v010_spiral_decay.py
 python pieces/001_last_orbit/experiments/v011_orbital_phase.py
+python pieces/001_last_orbit/experiments/v012_companion_distortion.py
 ```
 
 The current renders use a square `1200x1200` default so the images line up cleanly.

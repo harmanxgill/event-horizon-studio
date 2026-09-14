@@ -127,6 +127,15 @@ assert v012_spec.loader is not None
 v012_spec.loader.exec_module(v012)
 
 
+v013_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v013",
+    PIECE_DIR / "experiments" / "v013_interaction_field.py",
+)
+v013 = importlib.util.module_from_spec(v013_spec)
+assert v013_spec.loader is not None
+v013_spec.loader.exec_module(v013)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -1205,3 +1214,127 @@ def test_v012_rejects_a_degenerate_distortion() -> None:
     for bad in (1.0, -1.0, 1.4):
         with pytest.raises(ValueError):
             v012.companion_distortion(theta, bad)
+
+
+def test_v013_expression_is_finite() -> None:
+    x, y = v013.coordinate_grids(width=81, height=65)
+    field = v013.v013_field(x, y)
+    rgb = v013.v013_rgb(width=81, height=65)
+
+    assert field.shape == (65, 81)
+    assert np.isfinite(field).all()
+
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+
+
+def test_v013_matches_the_specified_product() -> None:
+    x, y = v013.coordinate_grids(width=121, height=121)
+    r1, r2 = v013.radial_fields(x, y)
+
+    for alpha_i, beta_i in ((25.0, 3.0), (10.0, 1.5), (60.0, 5.0)):
+        expected = np.exp(-alpha_i * (r1 - r2) ** 2) * np.exp(-beta_i * (r1 + r2))
+        actual = v013.interaction_field(r1, r2, alpha_i=alpha_i, beta_i=beta_i, strength=1.0)
+
+        assert np.allclose(actual, expected * np.exp(beta_i * 2.0 * 0.36))
+
+
+def test_v013_peaks_at_the_midpoint_with_the_given_strength() -> None:
+    x, y = v013.coordinate_grids(width=601, height=601)
+    r1, r2 = v013.radial_fields(x, y)
+
+    for strength in (0.2, 0.35, 1.0):
+        interaction = v013.interaction_field(r1, r2, strength=strength)
+
+        assert interaction.max() <= strength + 1.0e-12
+        assert np.isclose(interaction.max(), strength, rtol=1.0e-3)
+
+        row, col = np.unravel_index(interaction.argmax(), interaction.shape)
+        assert abs(float(x[row, col])) < 0.01
+        assert abs(float(y[row, col])) < 0.01
+
+
+def test_v013_balance_term_selects_the_perpendicular_bisector() -> None:
+    x, y = v013.coordinate_grids(width=401, height=401)
+    r1, r2 = v013.radial_fields(x, y)
+
+    balance = np.exp(-25.0 * (r1 - r2) ** 2)
+    on_bisector = np.abs(x) < 1.0e-9
+
+    assert on_bisector.any()
+    assert np.allclose(balance[on_bisector], 1.0)
+
+    row = int(np.argmin(np.abs(y[:, 0])))
+    along_axis = balance[row]
+    assert np.isclose(along_axis.max(), 1.0)
+    assert np.isclose(float(x[row][along_axis.argmax()]), 0.0, atol=1.0e-9)
+    assert along_axis[np.abs(x[row]) > 0.2].max() < 0.05
+
+    # the level sets of r1 - r2 are hyperbolae asymptotic to lines through the
+    # origin, so the selected region is a widening wedge rather than a strip
+    far_out = (np.abs(x - 0.3) < 0.01) & (np.abs(y - 1.0) < 0.01)
+    assert far_out.any()
+    assert balance[far_out].max() > 0.3
+
+
+def test_v013_confinement_is_what_bounds_the_bisector() -> None:
+    x, y = v013.coordinate_grids(width=601, height=601)
+    r1, r2 = v013.radial_fields(x, y)
+
+    col = int(np.argmin(np.abs(x[0])))
+    balance = np.exp(-25.0 * (r1 - r2) ** 2)[:, col]
+    full = v013.interaction_field(r1, r2)[:, col]
+
+    far = np.abs(y[:, col]) > 0.8
+
+    assert balance[far].min() > 0.99
+    assert full[far].max() < 0.05 * full.max()
+
+    profile = full[y[:, col] >= 0.0]
+    assert np.all(np.diff(profile[np.argmax(profile) :]) <= 1.0e-12)
+
+
+def test_v013_interaction_is_symmetric_in_the_two_holes() -> None:
+    x, y = v013.coordinate_grids(width=201, height=201)
+    r1, r2 = v013.radial_fields(x, y)
+
+    interaction = v013.interaction_field(r1, r2)
+
+    assert np.allclose(interaction, v013.interaction_field(r2, r1))
+    assert np.allclose(interaction, np.fliplr(interaction))
+    assert np.allclose(interaction, np.rot90(interaction, 2))
+
+
+def test_v013_keeps_the_half_turn_symmetry() -> None:
+    x, y = v013.coordinate_grids(width=201, height=201)
+    field = v013.v013_field(x, y)
+
+    assert np.allclose(field, np.rot90(field, 2))
+    assert not np.allclose(field, np.fliplr(field))
+
+
+def test_v013_reduces_to_v012_without_strength() -> None:
+    x, y = v013.coordinate_grids(width=200, height=200)
+
+    assert np.allclose(v013.v013_field(x, y, strength=0.0), v012.v012_field(x, y))
+    assert np.array_equal(v013.v013_rgb(120, 120, strength=0.0), v012.v012_rgb(120, 120))
+
+
+def test_v013_keeps_the_silhouettes_solid() -> None:
+    x, y = v013.coordinate_grids(width=400, height=400)
+    r1, r2 = v013.radial_fields(x, y)
+    field = v013.v013_field(x, y)
+
+    margin = 6.0 * v013.grid_spacing(x, y)
+    inside = np.minimum(r1, r2) <= 0.14 - margin
+    assert inside.any()
+    assert field[inside].max() < 1.0e-2
+
+
+def test_v013_rejects_negative_interaction_parameters() -> None:
+    import pytest
+
+    r = np.full(4, 0.5)
+    for kwargs in ({"alpha_i": -1.0}, {"beta_i": -1.0}, {"strength": -0.1}):
+        with pytest.raises(ValueError):
+            v013.interaction_field(r, r, **kwargs)

@@ -599,7 +599,56 @@ python pieces/001_last_orbit/experiments/v012_companion_distortion.py --distorti
 python pieces/001_last_orbit/experiments/v012_companion_distortion.py --distortion 0
 ```
 
+### v013 - binary interaction field
+
+A term that belongs to the pair rather than to either hole:
+
+```text
+I(x, y) = exp(-A (r1 - r2)^2) exp(-B (r1 + r2))
+```
+
+added to the luminous terms before the horizons are cut out, so the composition
+becomes `(F + A_halo + I)(1 - S)`. `I` is a function of `r1` and `r2` only, and
+symmetric under exchanging them, so it is the first term in the piece that is
+identical for both objects instead of being summed over them.
+
+The two exponentials do different jobs. `r1 - r2` vanishes on the perpendicular
+bisector, so the first picks out the points where the two holes are equidistant.
+`r1 + r2` is at least `2a` everywhere, with equality only on the segment joining
+the centres, so the second falls away from the pair.
+
+### Normalisation and the wedge
+
+Because `r1 + r2 >= 2a`, subtracting that floor makes the second factor at most
+`1` and puts the maximum of `I` at the midpoint with value exactly `s`:
+
+```text
+I = s exp(-A (r1 - r2)^2) exp(-B (r1 + r2 - 2a))
+```
+
+so the strength parameter is the peak brightness rather than an arbitrary
+scale. Measured, `I` peaks at the origin at `s` and never exceeds it.
+
+The confinement term matters more than the bisector picture suggests. The level
+sets of `r1 - r2` are hyperbolae with foci at the two centres, and they
+asymptote to straight lines through the origin, so the first factor alone does
+not select a strip of fixed width: it selects a wedge that keeps widening.
+Along the bisector the balance term stays at `1.0` forever, and at `(0.3, 1.0)`
+it is still `0.38`. With the confinement term the same profile is at `34%` of
+peak by `y = 0.4` and `2.6%` by `y = 0.9`.
+
+Along the binary axis the balance term falls to under `5%` of peak by
+`|x| = 0.2`, which is what keeps the bright patch between the holes narrow.
+
+Render it, widen or tighten the wedge, or switch it off:
+
+```bash
+python pieces/001_last_orbit/experiments/v013_interaction_field.py
+python pieces/001_last_orbit/experiments/v013_interaction_field.py --alpha-i 8 --beta-i 1.5
+python pieces/001_last_orbit/experiments/v013_interaction_field.py --strength 0
+```
+
 Possible next versions:
 
-- v013: rotating the binary axis with the same phase
-- v014: separation shrinking as the orbit decays
+- v014: rotating the binary axis with the same phase
+- v015: separation shrinking as the orbit decays
