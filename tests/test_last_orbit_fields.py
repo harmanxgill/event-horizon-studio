@@ -73,6 +73,15 @@ assert v006_spec.loader is not None
 v006_spec.loader.exec_module(v006)
 
 
+v007_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v007",
+    PIECE_DIR / "experiments" / "v007_structured_light.py",
+)
+v007 = importlib.util.module_from_spec(v007_spec)
+assert v007_spec.loader is not None
+v007_spec.loader.exec_module(v007)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -512,3 +521,87 @@ def test_v006_rejects_invalid_beaming_parameters() -> None:
             v006.beaming_weight(theta, beta=bad_beta)
     with pytest.raises(ValueError):
         v006.beaming_weight(theta, exponent=-1.0)
+
+
+def test_v007_expression_is_finite() -> None:
+    x, y = v007.coordinate_grids(width=81, height=65)
+    field = v007.v007_field(x, y)
+    rgb = v007.v007_rgb(width=81, height=65)
+
+    assert field.shape == (65, 81)
+    assert np.isfinite(field).all()
+
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+
+
+def test_v007_keeps_the_half_turn_symmetry() -> None:
+    x, y = v007.coordinate_grids(width=201, height=201)
+    field = v007.v007_field(x, y)
+
+    assert np.allclose(field, np.rot90(field, 2))
+    assert not np.allclose(field, np.fliplr(field))
+
+
+def test_v007_harmonic_has_the_requested_number_of_lobes() -> None:
+    theta = np.linspace(-np.pi, np.pi, 20000, endpoint=False)
+
+    for order in (1, 2, 3, 4, 5, 8):
+        weight = v007.harmonic_weight(theta, order=order, harmonic=0.5)
+        peaks = (weight > np.roll(weight, 1)) & (weight > np.roll(weight, -1))
+        assert int(peaks.sum()) == order
+
+
+def test_v007_ring_weight_is_brightness_neutral_at_every_order() -> None:
+    theta = np.linspace(-np.pi, np.pi, 8192, endpoint=False)
+
+    for order in range(1, 9):
+        for harmonic in (0.0, 0.3, 0.6, -0.3):
+            weight = v007.ring_weight(theta, order=order, harmonic=harmonic)
+            assert np.isclose(weight.mean(), 1.0, atol=1.0e-9)
+            assert np.all(weight > 0.0)
+
+
+def test_v007_harmonic_deepens_the_ring_structure() -> None:
+    theta = np.linspace(-np.pi, np.pi, 8192, endpoint=False)
+
+    flat = v007.ring_weight(theta, harmonic=0.0)
+    structured = v007.ring_weight(theta, harmonic=0.3)
+
+    assert structured.max() / structured.min() > flat.max() / flat.min()
+
+
+def test_v007_reduces_to_v006_without_the_harmonic() -> None:
+    x, y = v007.coordinate_grids(width=200, height=200)
+
+    assert np.allclose(v007.v007_field(x, y, harmonic=0.0), v006.v006_field(x, y))
+
+
+def test_v007_doppler_factor_is_the_unnormalised_beaming_term() -> None:
+    theta = np.linspace(-np.pi, np.pi, 4096, endpoint=False)
+
+    factor = v007.doppler_factor(theta)
+    assert np.allclose(factor / factor.mean(), v006.beaming_weight(theta), rtol=1.0e-6)
+
+
+def test_v007_keeps_the_silhouettes_solid() -> None:
+    x, y = v007.coordinate_grids(width=400, height=400)
+    r1, r2 = v007.radial_fields(x, y)
+    field = v007.v007_field(x, y)
+
+    margin = 6.0 * v007.grid_spacing(x, y)
+    inside = np.minimum(r1, r2) <= 0.14 - margin
+    assert inside.any()
+    assert field[inside].max() < 1.0e-2
+
+
+def test_v007_rejects_invalid_harmonic_parameters() -> None:
+    import pytest
+
+    theta = np.linspace(-np.pi, np.pi, 16)
+    for bad_order in (0, -1):
+        with pytest.raises(ValueError):
+            v007.harmonic_weight(theta, order=bad_order)
+    for bad_harmonic in (1.5, -1.5):
+        with pytest.raises(ValueError):
+            v007.harmonic_weight(theta, harmonic=bad_harmonic)

@@ -14,7 +14,7 @@ Finished images can go in `gallery/`.
 
 | Piece | Status | Notes |
 | --- | --- | --- |
-| [001 - The Last Orbit](https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit "https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit") | v006 | Equal-mass binary black holes in the final orbit before merger. |
+| [001 - The Last Orbit](https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit "https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit") | v007 | Equal-mass binary black holes in the final orbit before merger. |
 
 ## Installation
 
@@ -29,13 +29,13 @@ pip install -e ".[dev]"
 Render the latest version:
 
 ```bash
-python pieces/001_last_orbit/experiments/v006_beamed_rings.py
+python pieces/001_last_orbit/experiments/v007_structured_light.py
 ```
 
 Render it smaller:
 
 ```bash
-python pieces/001_last_orbit/experiments/v006_beamed_rings.py --width 512 --height 512
+python pieces/001_last_orbit/experiments/v007_structured_light.py --width 512 --height 512
 ```
 
 Earlier versions still render on their own:
@@ -46,6 +46,7 @@ python pieces/001_last_orbit/experiments/v002_horizon_masks.py
 python pieces/001_last_orbit/experiments/v003_sharp_horizons.py
 python pieces/001_last_orbit/experiments/v004_outer_glow.py
 python pieces/001_last_orbit/experiments/v005_angular_fields.py
+python pieces/001_last_orbit/experiments/v006_beamed_rings.py
 ```
 
 The current renders use a square `1200x1200` default so the images line up cleanly.

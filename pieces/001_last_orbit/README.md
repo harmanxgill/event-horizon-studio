@@ -283,7 +283,63 @@ python pieces/001_last_orbit/experiments/v006_beamed_rings.py --beta 0.5 --expon
 python pieces/001_last_orbit/experiments/v006_beamed_rings.py --beta 0 --anisotropy 0.35
 ```
 
+### v007 - structured light
+
+v005 added the `m = 1` term and v006 a beaming factor. v007 adds a harmonic of
+arbitrary order, so the light around each hole breaks into `m` lobes:
+
+```text
+C(theta) = 1 + c cos(m theta)
+```
+
+`theta = 0` still points at the companion, so one lobe always faces across the
+gap. The default `m = 4` keeps each ring legible while the structure is
+unmistakable; `m = 3` gives sweeping arcs instead, and `m >= 5` breaks the ring
+into separate beads.
+
+### Keeping the modulation brightness-neutral
+
+Each factor so far averages to `1` over a turn, so none of them changes total
+ring brightness. That stops being automatic once the harmonic is added. `D^p`
+has a component at every order, so `cos(m theta)` is not orthogonal to it, and
+the product of the three drifts away from unit mean by order `1%` depending on
+`m`. Rather than choose `m` to make the drift small, v007 normalises the whole
+angular profile once:
+
+```text
+P(theta) = W(theta) C(theta) D(theta)^p
+R(theta) = P(theta) / <P>
+```
+
+`<P>` is the average of `P` over a full turn. `R` then averages to exactly `1`
+for every order and every combination of `c`, `e`, `B` and `p`, and the earlier
+per-factor normalisation of the beaming term is no longer needed: `D^p` enters
+raw as `doppler_factor`. Setting `c = 0` reproduces v006.
+
+The ring is
+
+```text
+F = exp(-s(r1 - r_ring)^2) R(theta1) + exp(-s(r2 - r_ring)^2) R(theta2)
+```
+
+Both holes take the same `R`, and `theta1(P) = theta2(-P)`, so any angular
+profile whatsoever leaves the half-turn symmetry of v006 intact.
+
+Render it with:
+
+```bash
+python pieces/001_last_orbit/experiments/v007_structured_light.py
+```
+
+Change the order, or fall back to v006:
+
+```bash
+python pieces/001_last_orbit/experiments/v007_structured_light.py --order 3
+python pieces/001_last_orbit/experiments/v007_structured_light.py --order 6 --harmonic 0.5
+python pieces/001_last_orbit/experiments/v007_structured_light.py --harmonic 0
+```
+
 Possible next versions:
 
-- v007: disk distortion toward the companion
-- v008: orbital phase, rotating the binary axis
+- v008: disk distortion toward the companion
+- v009: orbital phase, rotating the binary axis
