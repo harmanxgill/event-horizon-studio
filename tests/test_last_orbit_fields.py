@@ -64,6 +64,15 @@ assert v005_spec.loader is not None
 v005_spec.loader.exec_module(v005)
 
 
+v006_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v006",
+    PIECE_DIR / "experiments" / "v006_beamed_rings.py",
+)
+v006 = importlib.util.module_from_spec(v006_spec)
+assert v006_spec.loader is not None
+v006_spec.loader.exec_module(v006)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -415,3 +424,91 @@ def test_v005_rejects_out_of_range_anisotropy() -> None:
     for bad in (1.5, -1.5):
         with pytest.raises(ValueError):
             v005.angular_weight(theta, bad)
+
+
+def test_v006_expression_is_finite() -> None:
+    x, y = v006.coordinate_grids(width=81, height=65)
+    field = v006.v006_field(x, y)
+    rgb = v006.v006_rgb(width=81, height=65)
+
+    assert field.shape == (65, 81)
+    assert np.isfinite(field).all()
+
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+
+
+def test_v006_trades_mirror_symmetry_for_rotation_symmetry() -> None:
+    x, y = v006.coordinate_grids(width=201, height=201)
+    field = v006.v006_field(x, y)
+
+    assert np.allclose(field, np.rot90(field, 2))
+    assert not np.allclose(field, np.fliplr(field))
+
+
+def test_v006_beaming_is_normalised_and_peaks_along_the_orbit() -> None:
+    theta = np.linspace(-np.pi, np.pi, 4096, endpoint=False)
+    weight = v006.beaming_weight(theta)
+
+    assert np.isclose(weight.mean(), 1.0, atol=1.0e-6)
+    assert np.all(weight > 0.0)
+    assert np.isclose(float(theta[weight.argmax()]), v006.ORBITAL_OFFSET, atol=1.0e-2)
+    assert np.isclose(float(theta[weight.argmin()]), v006.ORBITAL_OFFSET + np.pi, atol=1.0e-2)
+    assert weight.max() / weight.min() > 2.0
+
+
+def test_v006_doppler_mean_matches_the_closed_form() -> None:
+    for beta in (0.0, 0.15, 0.28, 0.5, 0.8):
+        assert np.isclose(v006.doppler_mean(beta, 1.0), 1.0 / np.sqrt(1.0 - beta**2), rtol=1.0e-4)
+
+
+def test_v006_modulations_are_orthogonal() -> None:
+    theta = np.linspace(-np.pi, np.pi, 8192, endpoint=False)
+
+    for anisotropy in (0.0, 0.2, 0.5, -0.4):
+        combined = v006.angular_weight(theta, anisotropy) * v006.beaming_weight(theta)
+        assert np.isclose(combined.mean(), 1.0, atol=1.0e-6)
+
+
+def test_v006_reduces_to_v005_without_beaming() -> None:
+    x, y = v006.coordinate_grids(width=200, height=200)
+
+    assert np.allclose(v006.beaming_weight(np.linspace(-np.pi, np.pi, 64), beta=0.0), 1.0)
+    assert np.allclose(
+        v006.v006_field(x, y, anisotropy=0.35, beta=0.0),
+        v005.v005_field(x, y),
+    )
+
+
+def test_v006_rings_are_less_uniform_than_v005() -> None:
+    x, y = v006.coordinate_grids(width=600, height=600)
+    r1, _ = v006.radial_fields(x, y)
+    on_ring = np.abs(r1 - 0.25) < 0.02
+    assert on_ring.any()
+
+    spread5 = v005.v005_field(x, y)[on_ring]
+    spread6 = v006.v006_field(x, y)[on_ring]
+
+    assert spread6.max() / spread6.min() > spread5.max() / spread5.min()
+
+
+def test_v006_keeps_the_silhouettes_solid() -> None:
+    x, y = v006.coordinate_grids(width=400, height=400)
+    r1, r2 = v006.radial_fields(x, y)
+    field = v006.v006_field(x, y)
+
+    margin = 6.0 * v006.grid_spacing(x, y)
+    inside = np.minimum(r1, r2) <= 0.14 - margin
+    assert inside.any()
+    assert field[inside].max() < 1.0e-2
+
+
+def test_v006_rejects_invalid_beaming_parameters() -> None:
+    import pytest
+
+    theta = np.linspace(-np.pi, np.pi, 16)
+    for bad_beta in (-0.1, 1.0, 1.5):
+        with pytest.raises(ValueError):
+            v006.beaming_weight(theta, beta=bad_beta)
+    with pytest.raises(ValueError):
+        v006.beaming_weight(theta, exponent=-1.0)

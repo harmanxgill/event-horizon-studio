@@ -218,7 +218,72 @@ holes rather than fusing them:
 python pieces/001_last_orbit/experiments/v005_angular_fields.py --anisotropy -0.35
 ```
 
+### v006 - beamed rings
+
+v005 put one cosine on each ring. A second cosine of the same order would only
+collapse back into the first, so v006 modulates with a factor that is not a
+single harmonic.
+
+Each hole carries its material around the orbit, and the side sweeping forward
+is brighter. Writing `theta_v` for the orbital direction in a hole's own frame,
+
+```text
+D(theta) = 1 / (1 - B cos(theta - theta_v))
+N(theta) = D(theta)^p / <D^p>
+```
+
+`<D^p>` is the average of `D^p` over a full turn, so `N` averages to `1`: the
+beaming redistributes ring brightness without adding any, exactly as `W` does.
+At the defaults `B = 0.28` and `p = 2` the bright arc is `3.16` times the dim
+one, and unlike a cosine it is concentrated rather than spread.
+
+Because the binary turns counter-clockwise, both holes have
+
+```text
+theta_v = -pi/2
+```
+
+in their own frames. One constant covers both, which is the same statement as
+the symmetry below. The ring becomes
+
+```text
+F = exp(-s(r1 - r_ring)^2) W(theta1) N(theta1)
+  + exp(-s(r2 - r_ring)^2) W(theta2) N(theta2)
+```
+
+`W` is even about `theta = 0` and `N` is even about `theta = -pi/2`, so the two
+are orthogonal over a turn and their product still averages to exactly `1`.
+Setting `B = 0` reproduces v005.
+
+## Symmetry
+
+v001 through v005 are all left-right symmetric, and the tests check it. v006 is
+not, and should not be: a binary that turns has a handedness, and reflecting
+the image reverses it. What survives is the half-turn:
+
+```text
+G(-x, -y) = G(x, y)
+```
+
+The rotation carries each hole onto the other and each velocity onto the
+other's, so an equal-mass binary is symmetric under `rot180` whatever its
+orbital phase. The tests assert that from v006 on, and assert that mirror
+symmetry is genuinely gone.
+
+Render it with:
+
+```bash
+python pieces/001_last_orbit/experiments/v006_beamed_rings.py
+```
+
+Push the beaming harder, or turn it off to recover v005:
+
+```bash
+python pieces/001_last_orbit/experiments/v006_beamed_rings.py --beta 0.5 --exponent 3
+python pieces/001_last_orbit/experiments/v006_beamed_rings.py --beta 0 --anisotropy 0.35
+```
+
 Possible next versions:
 
-- v006: disk distortion toward the companion
-- v007: orbital phase, rotating the binary axis
+- v007: disk distortion toward the companion
+- v008: orbital phase, rotating the binary axis
