@@ -1,5 +1,7 @@
 # 001 - The Last Orbit
 
+[GitHub link](https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit "https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit")
+
 ## Concept
 
 Two equal-mass black holes in the last orbit before merger. This is art from equations, not a physics simulation.
@@ -40,7 +42,7 @@ theta2 = atan2(y - c2y, x - c2x)
 From the repository root:
 
 ```bash
-python pieces/001_last_orbit/render.py --width 1024 --height 1024
+python pieces/001_last_orbit/render.py --width 1200 --height 1200
 ```
 
 The default output path is `pieces/001_last_orbit/output/last_orbit_preview.png`.
@@ -63,8 +65,34 @@ Render it with:
 python pieces/001_last_orbit/experiments/v001_two_radial_fields.py
 ```
 
+### v002 - horizon masks
+
+The same two rings, with an event horizon carved out of each center. With the
+logistic horizon field
+
+```text
+H(r) = 1 / (1 + exp((r - r_h) / w))
+S(x, y) = max(H(r1), H(r2))
+```
+
+the image becomes
+
+```text
+G(x, y) = F(x, y) (1 - S(x, y))
+```
+
+`S` is close to `1` inside either horizon and close to `0` outside it, so `G`
+matches `F` away from the centers and falls to zero within `r_h`. The horizon
+radius `r_h = 0.14` and edge width `w = 0.015` are the same values
+`equations.py` uses, so the experiment and the piece agree.
+
+Render it with:
+
+```bash
+python pieces/001_last_orbit/experiments/v002_horizon_masks.py
+```
+
 Possible next versions:
 
-- v002: event-horizon masks
 - v003: angular dependence
 - v004: disk distortion toward the companion

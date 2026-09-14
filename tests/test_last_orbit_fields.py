@@ -28,6 +28,15 @@ assert v001_spec.loader is not None
 v001_spec.loader.exec_module(v001)
 
 
+v002_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v002",
+    PIECE_DIR / "experiments" / "v002_horizon_masks.py",
+)
+v002 = importlib.util.module_from_spec(v002_spec)
+assert v002_spec.loader is not None
+v002_spec.loader.exec_module(v002)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -88,3 +97,41 @@ def test_v001_expression_is_finite_and_symmetric() -> None:
     assert rgb.shape == (65, 81, 3)
     assert rgb.dtype == np.uint8
     assert np.array_equal(rgb, np.fliplr(rgb))
+
+
+def test_v002_expression_is_finite_and_symmetric() -> None:
+    x, y = v002.coordinate_grids(width=81, height=65)
+    field = v002.v002_field(x, y)
+    rgb = v002.v002_rgb(width=81, height=65)
+
+    assert field.shape == (65, 81)
+    assert np.isfinite(field).all()
+    assert np.allclose(field, np.fliplr(field))
+
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+    assert np.array_equal(rgb, np.fliplr(rgb))
+
+
+def test_v002_horizon_centers_are_dark() -> None:
+    x, y = v002.coordinate_grids(width=81, height=65)
+    r1, r2 = v002.radial_fields(x, y)
+    field = v002.v002_field(x, y)
+
+    inside = (r1 <= 0.5 * 0.14) | (r2 <= 0.5 * 0.14)
+    assert inside.any()
+    assert field[inside].max() < 1.0e-3
+
+
+def test_v002_masks_the_v001_ring_only_near_the_centers() -> None:
+    x, y = v002.coordinate_grids(width=81, height=65)
+    r1, r2 = v002.radial_fields(x, y)
+
+    rings = v002.ring_field(r1, r2)
+    masked = v002.v002_field(x, y)
+
+    assert np.all(masked <= rings + 1.0e-12)
+
+    far = (r1 > 4.0 * 0.14) & (r2 > 4.0 * 0.14)
+    assert far.any()
+    assert np.allclose(masked[far], rings[far])

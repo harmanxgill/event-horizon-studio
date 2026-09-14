@@ -20,8 +20,8 @@ DEFAULT_OUTPUT = Path(__file__).resolve().parent / "output" / "last_orbit_previe
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Render 001 - The Last Orbit.")
-    parser.add_argument("--width", type=int, default=1600, help="Rendered image width in pixels.")
-    parser.add_argument("--height", type=int, default=1600, help="Rendered image height in pixels.")
+    parser.add_argument("--width", type=int, default=1200, help="Rendered image width in pixels.")
+    parser.add_argument("--height", type=int, default=1200, help="Rendered image height in pixels.")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT, help="PNG output path.")
     parser.add_argument("--extent", type=float, default=equations.DEFAULT_PARAMETERS["extent"])
     parser.add_argument("--separation", type=float, default=equations.DEFAULT_PARAMETERS["separation"])
