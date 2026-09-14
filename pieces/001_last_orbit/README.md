@@ -92,7 +92,44 @@ Render it with:
 python pieces/001_last_orbit/experiments/v002_horizon_masks.py
 ```
 
+### v003 - sharp horizons
+
+v002's horizon edge is a fixed width `w = 0.015` in coordinate units, so the
+shadow fades over roughly nine pixels at `1200x1200` and over twice that at
+double the resolution. v003 sharpens it by tying `w` to the sampling itself.
+With grid spacing `h`,
+
+```text
+w = k h
+```
+
+where `k` is the edge width measured in pixels (`edge_pixels`, default `1`).
+The construction is otherwise v002's:
+
+```text
+S(x, y) = max(H(r1), H(r2))
+G(x, y) = F(x, y) (1 - S(x, y))
+```
+
+A true step function `w -> 0` would alias the circle into a staircase. One
+pixel of falloff is the sharpest edge the grid can represent without that, so
+the silhouettes read as solid objects cut out of the glow, and they stay
+equally crisp at every resolution: the partially lit rim is about one pixel
+wide whether the render is `400x400` or `2400x2400`.
+
+Render it with:
+
+```bash
+python pieces/001_last_orbit/experiments/v003_sharp_horizons.py
+```
+
+Soften the rim again with a wider edge:
+
+```bash
+python pieces/001_last_orbit/experiments/v003_sharp_horizons.py --edge-pixels 4
+```
+
 Possible next versions:
 
-- v003: angular dependence
-- v004: disk distortion toward the companion
+- v004: angular dependence
+- v005: disk distortion toward the companion

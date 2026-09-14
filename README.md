@@ -14,7 +14,7 @@ Finished images can go in `gallery/`.
 
 | Piece | Status | Notes |
 | --- | --- | --- |
-| [001 - The Last Orbit](https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit "https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit") | v002 | Equal-mass binary black holes in the final orbit before merger. |
+| [001 - The Last Orbit](https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit "https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit") | v003 | Equal-mass binary black holes in the final orbit before merger. |
 
 ## Installation
 
@@ -29,19 +29,20 @@ pip install -e ".[dev]"
 Render the latest version:
 
 ```bash
-python pieces/001_last_orbit/experiments/v002_horizon_masks.py
+python pieces/001_last_orbit/experiments/v003_sharp_horizons.py
 ```
 
 Render it smaller:
 
 ```bash
-python pieces/001_last_orbit/experiments/v002_horizon_masks.py --width 512 --height 512
+python pieces/001_last_orbit/experiments/v003_sharp_horizons.py --width 512 --height 512
 ```
 
 Earlier versions still render on their own:
 
 ```bash
 python pieces/001_last_orbit/experiments/v001_two_radial_fields.py
+python pieces/001_last_orbit/experiments/v002_horizon_masks.py
 ```
 
 The current renders use a square `1200x1200` default so the images line up cleanly.

@@ -37,6 +37,15 @@ assert v002_spec.loader is not None
 v002_spec.loader.exec_module(v002)
 
 
+v003_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v003",
+    PIECE_DIR / "experiments" / "v003_sharp_horizons.py",
+)
+v003 = importlib.util.module_from_spec(v003_spec)
+assert v003_spec.loader is not None
+v003_spec.loader.exec_module(v003)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -135,3 +144,82 @@ def test_v002_masks_the_v001_ring_only_near_the_centers() -> None:
     far = (r1 > 4.0 * 0.14) & (r2 > 4.0 * 0.14)
     assert far.any()
     assert np.allclose(masked[far], rings[far])
+
+
+def test_v003_expression_is_finite_and_symmetric() -> None:
+    x, y = v003.coordinate_grids(width=81, height=65)
+    field = v003.v003_field(x, y)
+    rgb = v003.v003_rgb(width=81, height=65)
+
+    assert field.shape == (65, 81)
+    assert np.isfinite(field).all()
+    assert np.allclose(field, np.fliplr(field))
+
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+    assert np.array_equal(rgb, np.fliplr(rgb))
+
+
+def test_v003_silhouettes_are_solid_black() -> None:
+    x, y = v003.coordinate_grids(width=400, height=400)
+    r1, r2 = v003.radial_fields(x, y)
+    field = v003.v003_field(x, y)
+
+    margin = 6.0 * v003.grid_spacing(x, y)
+    inside = np.minimum(r1, r2) <= 0.14 - margin
+    assert inside.any()
+    assert field[inside].max() < 1.0e-2
+
+
+def test_v003_leaves_the_rings_untouched_away_from_the_horizons() -> None:
+    x, y = v003.coordinate_grids(width=400, height=400)
+    r1, r2 = v003.radial_fields(x, y)
+
+    rings = v003.ring_field(r1, r2)
+    masked = v003.v003_field(x, y)
+
+    assert np.all(masked <= rings + 1.0e-12)
+
+    far = (r1 > 2.0 * 0.14) & (r2 > 2.0 * 0.14)
+    assert far.any()
+    assert np.allclose(masked[far], rings[far])
+
+
+def test_v003_boundary_is_sharper_than_v002() -> None:
+    x, y = v003.coordinate_grids(width=400, height=400)
+    r1, r2 = v003.radial_fields(x, y)
+
+    soft = v003.silhouette_field(r1, r2, horizon_edge=0.015)
+    sharp = v003.silhouette_field(r1, r2, horizon_edge=v003.grid_spacing(x, y))
+
+    soft_band = int(((soft > 0.01) & (soft < 0.99)).sum())
+    sharp_band = int(((sharp > 0.01) & (sharp < 0.99)).sum())
+
+    assert sharp_band > 0
+    assert sharp_band < soft_band
+
+
+def test_v003_edge_stays_one_pixel_wide_at_any_resolution() -> None:
+    widths = (200, 400, 800)
+    bands = []
+    for width in widths:
+        x, y = v003.coordinate_grids(width=width, height=width)
+        r1, r2 = v003.radial_fields(x, y)
+        silhouette = v003.silhouette_field(r1, r2, v003.grid_spacing(x, y))
+        bands.append(int(((silhouette > 0.01) & (silhouette < 0.99)).sum()))
+
+    for coarse, fine, width_coarse, width_fine in zip(bands, bands[1:], widths, widths[1:]):
+        expected = coarse * (width_fine / width_coarse)
+        assert abs(fine - expected) < 0.25 * expected
+
+
+def test_v003_rejects_a_degenerate_grid() -> None:
+    import pytest
+
+    x, y = v003.coordinate_grids(width=1, height=1)
+    with pytest.raises(ValueError):
+        v003.grid_spacing(x, y)
+
+    x, y = v003.coordinate_grids(width=16, height=16)
+    with pytest.raises(ValueError):
+        v003.v003_field(x, y, edge_pixels=0.0)
