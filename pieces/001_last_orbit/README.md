@@ -339,7 +339,53 @@ python pieces/001_last_orbit/experiments/v007_structured_light.py --order 6 --ha
 python pieces/001_last_orbit/experiments/v007_structured_light.py --harmonic 0
 ```
 
+### v008 - coupled radius
+
+Every angular profile so far is evaluated at `theta` alone, so the lobes of
+v007 sit at the same angle at every radius and point straight out from each
+hole. v008 couples the two coordinates by shifting the angle with radius:
+
+```text
+phi(r, theta) = theta + q (r - r_ring)
+R(theta) -> R(phi(r, theta))
+```
+
+The shift is zero on the ring itself and grows linearly on either side, so a
+lobe leans one way inside the ring and the other way outside it. The straight
+spokes become arcs.
+
+The strength `q` has a natural scale. The ring is a Gaussian of width
+`1 / sqrt(s)` and the lobes repeat every `2 pi / m`, so asking the pattern to
+shear by half a lobe across one ring width fixes
+
+```text
+q = pi sqrt(s) / m
+```
+
+which is `7.02` at the defaults. Smaller values bend the lobes without
+detaching them; around `16` each arc wraps far enough to overlap its
+neighbour. `q = 0` reproduces v007.
+
+Because `phi` only rotates the profile at fixed `r`, `R(phi)` still averages to
+exactly `1` around every circle, so the coupling bends the light without
+brightening or dimming any radius. And `r1(P) = r2(-P)` alongside
+`theta1(P) = theta2(-P)`, so the half-turn symmetry survives unchanged.
+
+Render it with:
+
+```bash
+python pieces/001_last_orbit/experiments/v008_coupled_radius.py
+```
+
+Bend it less, wind it much further, or fall back to v007:
+
+```bash
+python pieces/001_last_orbit/experiments/v008_coupled_radius.py --twist 4
+python pieces/001_last_orbit/experiments/v008_coupled_radius.py --twist 16
+python pieces/001_last_orbit/experiments/v008_coupled_radius.py --twist 0
+```
+
 Possible next versions:
 
-- v008: disk distortion toward the companion
-- v009: orbital phase, rotating the binary axis
+- v009: disk distortion toward the companion
+- v010: orbital phase, rotating the binary axis

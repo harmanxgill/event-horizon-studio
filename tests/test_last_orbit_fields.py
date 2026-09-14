@@ -82,6 +82,15 @@ assert v007_spec.loader is not None
 v007_spec.loader.exec_module(v007)
 
 
+v008_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v008",
+    PIECE_DIR / "experiments" / "v008_coupled_radius.py",
+)
+v008 = importlib.util.module_from_spec(v008_spec)
+assert v008_spec.loader is not None
+v008_spec.loader.exec_module(v008)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -605,3 +614,101 @@ def test_v007_rejects_invalid_harmonic_parameters() -> None:
     for bad_harmonic in (1.5, -1.5):
         with pytest.raises(ValueError):
             v007.harmonic_weight(theta, harmonic=bad_harmonic)
+
+
+def test_v008_expression_is_finite() -> None:
+    x, y = v008.coordinate_grids(width=81, height=65)
+    field = v008.v008_field(x, y)
+    rgb = v008.v008_rgb(width=81, height=65)
+
+    assert field.shape == (65, 81)
+    assert np.isfinite(field).all()
+
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+
+
+def test_v008_keeps_the_half_turn_symmetry() -> None:
+    x, y = v008.coordinate_grids(width=201, height=201)
+    field = v008.v008_field(x, y)
+
+    assert np.allclose(field, np.rot90(field, 2))
+    assert not np.allclose(field, np.fliplr(field))
+
+
+def test_v008_coupling_vanishes_on_the_ring_and_grows_with_radius() -> None:
+    theta = np.linspace(-np.pi, np.pi, 256)
+    on_ring = np.full_like(theta, 0.25)
+
+    assert np.allclose(v008.coupled_angle(theta, on_ring), theta)
+
+    for r in (0.15, 0.35, 0.50):
+        shifted = v008.coupled_angle(theta, np.full_like(theta, r))
+        assert np.allclose(shifted - theta, 7.0 * (r - 0.25))
+
+
+def test_v008_natural_twist_shears_half_a_lobe_per_ring_width() -> None:
+    for order in (2, 3, 4, 6):
+        for sharpness in (40.0, 80.0, 160.0):
+            twist = v008.natural_twist(order=order, sharpness=sharpness)
+            ring_width = 1.0 / np.sqrt(sharpness)
+            lobe_spacing = 2.0 * np.pi / order
+
+            assert np.isclose(twist * ring_width, 0.5 * lobe_spacing)
+
+
+def test_v008_twist_preserves_brightness_at_every_radius() -> None:
+    theta = np.linspace(-np.pi, np.pi, 8192, endpoint=False)
+
+    for r in (0.10, 0.25, 0.40, 0.75):
+        phi = v008.coupled_angle(theta, np.full_like(theta, r))
+        assert np.isclose(v008.ring_weight(phi).mean(), 1.0, atol=1.0e-9)
+
+
+def test_v008_reduces_to_v007_without_twist() -> None:
+    x, y = v008.coordinate_grids(width=200, height=200)
+
+    assert np.allclose(v008.v008_field(x, y, twist=0.0), v007.v007_field(x, y))
+
+
+def test_v008_bends_the_lobes_off_the_radial_direction() -> None:
+    x, y = v008.coordinate_grids(width=700, height=700)
+    r1, _ = v008.radial_fields(x, y)
+    theta1, _ = v008.angular_fields(x, y)
+
+    straight = v008.v008_field(x, y, twist=0.0)
+    bent = v008.v008_field(x, y)
+
+    inner = np.abs(r1 - 0.20) < 0.01
+    outer = np.abs(r1 - 0.32) < 0.01
+    assert inner.any() and outer.any()
+
+    def brightest_angle(field: np.ndarray, shell: np.ndarray) -> float:
+        return float(theta1[shell][field[shell].argmax()])
+
+    straight_shift = abs(brightest_angle(straight, outer) - brightest_angle(straight, inner))
+    bent_shift = abs(brightest_angle(bent, outer) - brightest_angle(bent, inner))
+
+    assert straight_shift < 0.05
+    assert bent_shift > 0.4
+
+
+def test_v008_keeps_the_silhouettes_solid() -> None:
+    x, y = v008.coordinate_grids(width=400, height=400)
+    r1, r2 = v008.radial_fields(x, y)
+    field = v008.v008_field(x, y)
+
+    margin = 6.0 * v008.grid_spacing(x, y)
+    inside = np.minimum(r1, r2) <= 0.14 - margin
+    assert inside.any()
+    assert field[inside].max() < 1.0e-2
+
+
+def test_v008_rejects_invalid_twist_parameters() -> None:
+    import pytest
+
+    for bad_order in (0, -2):
+        with pytest.raises(ValueError):
+            v008.natural_twist(order=bad_order)
+    with pytest.raises(ValueError):
+        v008.natural_twist(sharpness=0.0)
