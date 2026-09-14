@@ -118,6 +118,15 @@ assert v011_spec.loader is not None
 v011_spec.loader.exec_module(v011)
 
 
+v012_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v012",
+    PIECE_DIR / "experiments" / "v012_companion_distortion.py",
+)
+v012 = importlib.util.module_from_spec(v012_spec)
+assert v012_spec.loader is not None
+v012_spec.loader.exec_module(v012)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -1077,3 +1086,116 @@ def test_v011_angle_singularity_sits_inside_the_horizon() -> None:
     field = v011.v011_field(x, y, phase=1.1)
     assert np.all(field[singular] < 1.0e-6)
     assert np.allclose(field, np.rot90(field, 2))
+
+
+def test_v012_expression_is_finite() -> None:
+    x, y = v012.coordinate_grids(width=81, height=65)
+    field = v012.v012_field(x, y)
+    rgb = v012.v012_rgb(width=81, height=65)
+
+    assert field.shape == (65, 81)
+    assert np.isfinite(field).all()
+
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+
+
+def test_v012_matches_the_plain_angle_specification() -> None:
+    x, y = v012.coordinate_grids(width=101, height=101)
+    a = 0.36
+
+    r1, r2 = v012.radial_fields(x, y, a=a)
+    theta1, theta2 = v012.angular_fields(x, y, a=a)
+
+    plain1 = np.arctan2(y, x + a)
+    plain2 = np.arctan2(y, x - a)
+
+    for epsilon in (-0.3, 0.0, 0.25):
+        d1, d2 = v012.distorted_radii(r1, r2, theta1, theta2, epsilon)
+
+        assert np.allclose(d1, r1 * (1.0 + epsilon * np.cos(plain1)))
+        assert np.allclose(d2, r2 * (1.0 - epsilon * np.cos(plain2)))
+
+
+def test_v012_keeps_the_half_turn_symmetry() -> None:
+    x, y = v012.coordinate_grids(width=201, height=201)
+
+    for epsilon in (-0.3, 0.0, 0.25):
+        field = v012.v012_field(x, y, distortion=epsilon)
+        assert np.allclose(field, np.rot90(field, 2))
+        if epsilon != 0.0:
+            assert not np.allclose(field, np.fliplr(field))
+
+
+def test_v012_moves_the_ring_by_the_predicted_factor() -> None:
+    theta = np.array([0.0, np.pi])
+
+    for epsilon in (-0.3, -0.1, 0.25):
+        d = v012.companion_distortion(theta, epsilon)
+
+        assert np.isclose(0.25 / d[0], 0.25 / (1.0 + epsilon))
+        assert np.isclose(0.25 / d[1], 0.25 / (1.0 - epsilon))
+
+        toward, away = 0.25 / d[0], 0.25 / d[1]
+        if epsilon < 0.0:
+            assert toward > away
+        else:
+            assert toward < away
+
+
+def test_v012_leaves_the_horizons_circular() -> None:
+    x, y = v012.coordinate_grids(width=400, height=400)
+    r1, r2 = v012.radial_fields(x, y)
+    edge = v012.grid_spacing(x, y)
+
+    plain = v012.silhouette_field(r1, r2, edge)
+
+    for epsilon in (-0.3, 0.25):
+        theta1, theta2 = v012.angular_fields(x, y)
+        d1, d2 = v012.distorted_radii(r1, r2, theta1, theta2, epsilon)
+        assert not np.allclose(v012.silhouette_field(d1, d2, edge), plain)
+
+    dark = v012.v012_field(x, y) < 1.0e-3
+    radii = np.minimum(r1, r2)[dark & (radii_mask := radii_guard(r1, r2))]
+    assert radii.max() < 0.145
+    assert radii.min() < 0.01
+
+
+def radii_guard(r1: np.ndarray, r2: np.ndarray) -> np.ndarray:
+    return np.minimum(r1, r2) < 0.2
+
+
+def test_v012_leaves_the_halo_undistorted() -> None:
+    x, y = v012.coordinate_grids(width=300, height=300)
+    r1, r2 = v012.radial_fields(x, y)
+
+    assert np.allclose(v012.halo_field(r1, r2), v011.halo_field(r1, r2))
+
+
+def test_v012_reduces_to_v011_without_distortion() -> None:
+    x, y = v012.coordinate_grids(width=200, height=200)
+
+    assert np.allclose(v012.v012_field(x, y, distortion=0.0), v011.v011_field(x, y))
+    assert np.array_equal(v012.v012_rgb(120, 120, distortion=0.0), v011.v011_rgb(120, 120))
+
+
+def test_v012_keeps_the_silhouettes_solid() -> None:
+    x, y = v012.coordinate_grids(width=400, height=400)
+    r1, r2 = v012.radial_fields(x, y)
+
+    margin = 6.0 * v012.grid_spacing(x, y)
+    inside = np.minimum(r1, r2) <= 0.14 - margin
+    assert inside.any()
+
+    for epsilon in (-0.3, 0.0, 0.25):
+        field = v012.v012_field(x, y, distortion=epsilon)
+        assert field[inside].max() < 1.0e-2
+
+
+def test_v012_rejects_a_degenerate_distortion() -> None:
+    import pytest
+
+    theta = np.linspace(-np.pi, np.pi, 16)
+    for bad in (1.0, -1.0, 1.4):
+        with pytest.raises(ValueError):
+            v012.companion_distortion(theta, bad)
