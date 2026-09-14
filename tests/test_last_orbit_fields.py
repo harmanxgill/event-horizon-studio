@@ -46,6 +46,15 @@ assert v003_spec.loader is not None
 v003_spec.loader.exec_module(v003)
 
 
+v004_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v004",
+    PIECE_DIR / "experiments" / "v004_outer_glow.py",
+)
+v004 = importlib.util.module_from_spec(v004_spec)
+assert v004_spec.loader is not None
+v004_spec.loader.exec_module(v004)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -223,3 +232,76 @@ def test_v003_rejects_a_degenerate_grid() -> None:
     x, y = v003.coordinate_grids(width=16, height=16)
     with pytest.raises(ValueError):
         v003.v003_field(x, y, edge_pixels=0.0)
+
+
+def test_v004_expression_is_finite_and_symmetric() -> None:
+    x, y = v004.coordinate_grids(width=81, height=65)
+    field = v004.v004_field(x, y)
+    rgb = v004.v004_rgb(width=81, height=65)
+
+    assert field.shape == (65, 81)
+    assert np.isfinite(field).all()
+    assert np.allclose(field, np.fliplr(field))
+
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+    assert np.array_equal(rgb, np.fliplr(rgb))
+
+
+def test_v004_glow_starts_outside_the_ring() -> None:
+    onset = v004.glow_onset()
+
+    assert onset > 0.25
+    assert np.isclose(onset, 0.25 + 1.0 / np.sqrt(80.0))
+
+    inside = np.linspace(0.0, 0.25, 64)
+    assert v004.outer_glow(inside, onset).max() < 0.02
+
+
+def test_v004_glow_peaks_outside_then_decays() -> None:
+    onset = v004.glow_onset()
+    r = np.linspace(0.0, 2.0, 4000)
+    glow = v004.outer_glow(r, onset)
+
+    peak = float(r[glow.argmax()])
+    assert peak > onset
+
+    tail = glow[r >= peak]
+    assert np.all(np.diff(tail) < 0.0)
+    assert float(glow[-1]) < 0.05 * float(glow.max())
+
+
+def test_v004_only_adds_light_to_v003() -> None:
+    x, y = v004.coordinate_grids(width=400, height=400)
+    field3 = v003.v003_field(x, y)
+    field4 = v004.v004_field(x, y)
+
+    assert np.all(field4 >= field3 - 1.0e-12)
+
+    r1, r2 = v004.radial_fields(x, y)
+    outer = (r1 > 0.6) & (r2 > 0.6)
+    assert outer.any()
+    assert field4[outer].mean() > 2.0 * field3[outer].mean()
+
+
+def test_v004_keeps_the_silhouettes_solid() -> None:
+    x, y = v004.coordinate_grids(width=400, height=400)
+    r1, r2 = v004.radial_fields(x, y)
+    field = v004.v004_field(x, y)
+
+    margin = 6.0 * v004.grid_spacing(x, y)
+    inside = np.minimum(r1, r2) <= 0.14 - margin
+    assert inside.any()
+    assert field[inside].max() < 1.0e-2
+
+
+def test_v004_rejects_invalid_glow_parameters() -> None:
+    import pytest
+
+    r = np.linspace(0.1, 1.0, 16)
+    with pytest.raises(ValueError):
+        v004.outer_glow(r, 0.36, glow=-0.1)
+    with pytest.raises(ValueError):
+        v004.outer_glow(r, 0.36, falloff=0.0)
+    with pytest.raises(ValueError):
+        v004.glow_onset(sharpness=0.0)

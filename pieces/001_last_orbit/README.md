@@ -129,7 +129,50 @@ Soften the rim again with a wider edge:
 python pieces/001_last_orbit/experiments/v003_sharp_horizons.py --edge-pixels 4
 ```
 
+### v004 - outer glow
+
+A secondary radial falloff around each hole. The ring is a Gaussian of width
+`1 / sqrt(s)` about `r_ring`, so the light it contributes has effectively died
+out one ring width further out. That distance is where the halo begins:
+
+```text
+r_glow = r_ring + 1 / sqrt(s)
+```
+
+The halo is a slow exponential decay from `r_glow`, switched on by the same
+logistic used for the horizons, now placed at `r_glow` instead of `r_h`:
+
+```text
+A(r) = g (1 - H(r; r_glow, u)) exp(-b (r - r_glow))
+```
+
+`1 - H` is close to `0` inside `r_glow` and close to `1` outside it, so the
+glow belongs to the region beyond the ring and leaves the ring's own profile
+alone. Summing over both holes and reapplying v003's silhouettes,
+
+```text
+G(x, y) = (F(x, y) + A(r1) + A(r2)) (1 - S(x, y))
+```
+
+The product of a rising gate and a falling exponential is not monotone: the
+halo peaks a little outside `r_glow`, near `r = 0.45`, then decays to under a
+twentieth of that by the edge of the frame. The two halos overlap between the
+holes, which is what brightens the bridge across the middle.
+
+Render it with:
+
+```bash
+python pieces/001_last_orbit/experiments/v004_outer_glow.py
+```
+
+Turn the halo down, or stretch it further out:
+
+```bash
+python pieces/001_last_orbit/experiments/v004_outer_glow.py --glow 0.15
+python pieces/001_last_orbit/experiments/v004_outer_glow.py --falloff 2.0
+```
+
 Possible next versions:
 
-- v004: angular dependence
-- v005: disk distortion toward the companion
+- v005: angular dependence
+- v006: disk distortion toward the companion
