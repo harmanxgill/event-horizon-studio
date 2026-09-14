@@ -154,6 +154,15 @@ assert v015_spec.loader is not None
 v015_spec.loader.exec_module(v015)
 
 
+v016_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v016",
+    PIECE_DIR / "experiments" / "v016_global_potential.py",
+)
+v016 = importlib.util.module_from_spec(v016_spec)
+assert v016_spec.loader is not None
+v016_spec.loader.exec_module(v016)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -1634,3 +1643,130 @@ def test_v015_rejects_invalid_tail_parameters() -> None:
             v015.tidal_tails(r, r, t, t, **kwargs)
     with pytest.raises(ValueError):
         v015.tail_taper(t, -0.5)
+
+
+def test_v016_expression_is_finite() -> None:
+    x, y = v016.coordinate_grids(width=81, height=65)
+    field = v016.v016_field(x, y)
+    rgb = v016.v016_rgb(width=81, height=65)
+
+    assert field.shape == (65, 81)
+    assert np.isfinite(field).all()
+
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+
+
+def test_v016_matches_the_specified_potential() -> None:
+    x, y = v016.coordinate_grids(width=121, height=121)
+    r1, r2 = v016.radial_fields(x, y)
+
+    for epsilon in (0.05, 0.2):
+        expected = -(1.0 / (r1 + epsilon) + 1.0 / (r2 + epsilon))
+        assert np.allclose(v016.binary_potential(r1, r2, epsilon=epsilon), expected)
+
+        for kappa in (0.15, 0.6):
+            assert np.allclose(
+                v016.potential_weight(r1, r2, kappa=kappa, epsilon=epsilon),
+                1.0 - np.exp(-kappa * np.abs(expected)),
+            )
+
+
+def test_v016_potential_is_negative_and_finite_at_the_centres() -> None:
+    x, y = v016.coordinate_grids(width=201, height=201)
+    r1, r2 = v016.radial_fields(x, y)
+
+    potential = v016.binary_potential(r1, r2)
+
+    assert np.all(potential < 0.0)
+    assert np.isfinite(potential).all()
+
+    deepest = float(np.abs(potential).max())
+    assert deepest < 1.0 / 0.05 + 1.0 / 0.05
+
+
+def test_v016_weight_is_bounded_and_deepest_at_the_holes() -> None:
+    x, y = v016.coordinate_grids(width=401, height=401)
+    r1, r2 = v016.radial_fields(x, y)
+
+    weight = v016.potential_weight(r1, r2)
+
+    assert weight.min() > 0.0
+    assert weight.max() < 1.0
+
+    near = np.minimum(r1, r2) < 0.2
+    far = np.minimum(r1, r2) > 1.0
+    assert weight[near].min() > weight[far].max()
+
+
+def test_v016_weight_never_reaches_zero_inside_the_frame() -> None:
+    x, y = v016.coordinate_grids(width=401, height=401)
+    r1, r2 = v016.radial_fields(x, y)
+
+    for kappa in (0.15, 0.3, 0.6):
+        weight = v016.potential_weight(r1, r2, kappa=kappa)
+        corner = (np.abs(x) > 0.9) & (np.abs(y) > 0.9)
+
+        assert weight[corner].min() > 0.1
+        assert weight.max() / weight[corner].mean() < 6.0
+
+
+def test_v016_adds_a_pedestal_rather_than_scaling() -> None:
+    x, y = v016.coordinate_grids(width=300, height=300)
+
+    base = v015.v015_field(x, y)
+    lifted = v016.v016_field(x, y)
+
+    assert np.all(lifted >= base - 1.0e-12)
+
+    # the pedestal lifts the dim background, but not the horizons: every pixel
+    # the silhouette zeroes stays zeroed, because P is added inside the mask
+    r1, r2 = v016.radial_fields(x, y)
+    inside = np.minimum(r1, r2) < 0.10
+    assert inside.any()
+    assert lifted[inside].max() < 1.0e-2
+
+    corner = (np.abs(x) > 0.9) & (np.abs(y) > 0.9)
+    assert corner.any()
+    assert lifted[corner].mean() > 2.0 * base[corner].mean()
+
+
+def test_v016_smaller_kappa_gives_more_contrast() -> None:
+    x, y = v016.coordinate_grids(width=301, height=301)
+    r1, r2 = v016.radial_fields(x, y)
+    corner = (np.abs(x) > 0.9) & (np.abs(y) > 0.9)
+
+    ratios = []
+    for kappa in (0.15, 0.3, 0.6):
+        weight = v016.potential_weight(r1, r2, kappa=kappa)
+        ratios.append(float(weight.max() / weight[corner].mean()))
+
+    assert ratios[0] > ratios[1] > ratios[2]
+
+
+def test_v016_reduces_to_v015_without_the_potential() -> None:
+    x, y = v016.coordinate_grids(width=200, height=200)
+
+    assert np.allclose(v016.v016_field(x, y, lambda_p=0.0), v015.v015_field(x, y))
+    assert np.array_equal(v016.v016_rgb(120, 120, lambda_p=0.0), v015.v015_rgb(120, 120))
+
+
+def test_v016_keeps_the_silhouettes_solid() -> None:
+    x, y = v016.coordinate_grids(width=400, height=400)
+    r1, r2 = v016.radial_fields(x, y)
+    field = v016.v016_field(x, y)
+
+    margin = 6.0 * v016.grid_spacing(x, y)
+    inside = np.minimum(r1, r2) <= 0.14 - margin
+    assert inside.any()
+    assert field[inside].max() < 1.0e-2
+
+
+def test_v016_rejects_invalid_potential_parameters() -> None:
+    import pytest
+
+    r = np.full(4, 0.5)
+    with pytest.raises(ValueError):
+        v016.binary_potential(r, r, epsilon=0.0)
+    with pytest.raises(ValueError):
+        v016.potential_weight(r, r, kappa=-0.1)

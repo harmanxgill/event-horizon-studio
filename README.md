@@ -14,7 +14,7 @@ Finished images can go in `gallery/`.
 
 | Piece | Status | Notes |
 | --- | --- | --- |
-| [001 - The Last Orbit](https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit "https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit") | v015 | Equal-mass binary black holes in the final orbit before merger. |
+| [001 - The Last Orbit](https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit "https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit") | v016 | Equal-mass binary black holes in the final orbit before merger. |
 
 ## Installation
 
@@ -29,13 +29,13 @@ pip install -e ".[dev]"
 Render the latest version:
 
 ```bash
-python pieces/001_last_orbit/experiments/v015_tidal_tails.py
+python pieces/001_last_orbit/experiments/v016_global_potential.py
 ```
 
 Render it smaller:
 
 ```bash
-python pieces/001_last_orbit/experiments/v015_tidal_tails.py --width 512 --height 512
+python pieces/001_last_orbit/experiments/v016_global_potential.py --width 512 --height 512
 ```
 
 Earlier versions still render on their own:
@@ -55,6 +55,7 @@ python pieces/001_last_orbit/experiments/v011_orbital_phase.py
 python pieces/001_last_orbit/experiments/v012_companion_distortion.py
 python pieces/001_last_orbit/experiments/v013_interaction_field.py
 python pieces/001_last_orbit/experiments/v014_tidal_bridge.py
+python pieces/001_last_orbit/experiments/v015_tidal_tails.py
 ```
 
 The current renders use a square `1200x1200` default so the images line up cleanly.

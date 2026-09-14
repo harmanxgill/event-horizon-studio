@@ -774,7 +774,62 @@ python pieces/001_last_orbit/experiments/v015_tidal_tails.py --c-q 0.4 --beta-q 
 python pieces/001_last_orbit/experiments/v015_tidal_tails.py --tails 0
 ```
 
+### v016 - global potential
+
+A field belonging to the binary as a whole, standing in for its gravitational
+potential:
+
+```text
+Phi = -M1 / (r1 + e) - M2 / (r2 + e),   M1 = M2 = 1
+P   = 1 - exp(-k |Phi|)
+```
+
+`e = 0.05` keeps `Phi` finite at the centres, where it would otherwise diverge.
+`Phi` is negative everywhere, so `|Phi|` is largest at the holes and smallest
+far out, and `P` maps that onto `(0, 1)`: deepest where the binary is, shallow
+at the edges of the frame.
+
+The composition becomes
+
+```text
+G = (S1 + S2 + A_halo + L_t T' + L_q Q + L_p P)(1 - S)
+```
+
+with `L_p = 0.25`. `A_halo` is v004's outer glow, which is not in the written
+sum but has been part of `S1 + S2`'s neighbourhood since then.
+
+### Added, not multiplied
+
+The specification says `P` should modulate the total luminosity, which reads as
+a product, but the intensity formula lists `+ L_p P`. v016 follows the formula.
+The two behave very differently here, because `P` does not reach zero anywhere
+inside the frame:
+
+```text
+P at the midpoint   0.519
+P on a ring         0.496
+P at the corner     0.153
+```
+
+so as a multiplier it would dim the corners to `0.20` of their value and act as
+a vignette, while as an addend it raises them. Measured, the corner background
+goes from `0.027` to `0.076`, which is `8` to `21` in the red channel: a faint
+warm pedestal rather than pure black. Lowering `k` sharpens the contrast, from
+`1.95x` midpoint-to-corner at `k = 0.6` up to `3.38x` at `k = 0.15`, which is
+why `0.15` is the default.
+
+The pedestal is added inside the horizon mask, so the two black disks stay
+exactly black. Every pixel the silhouette zeroes is still zero.
+
+Render it, deepen the pedestal, or drop it:
+
+```bash
+python pieces/001_last_orbit/experiments/v016_global_potential.py
+python pieces/001_last_orbit/experiments/v016_global_potential.py --kappa-phi 0.4 --lambda-p 0.4
+python pieces/001_last_orbit/experiments/v016_global_potential.py --lambda-p 0
+```
+
 Possible next versions:
 
-- v016: rotating the binary axis with the same phase
-- v017: separation shrinking as the orbit decays
+- v017: rotating the binary axis with the same phase
+- v018: separation shrinking as the orbit decays
