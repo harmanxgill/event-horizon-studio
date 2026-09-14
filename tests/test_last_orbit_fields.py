@@ -55,6 +55,15 @@ assert v004_spec.loader is not None
 v004_spec.loader.exec_module(v004)
 
 
+v005_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v005",
+    PIECE_DIR / "experiments" / "v005_angular_fields.py",
+)
+v005 = importlib.util.module_from_spec(v005_spec)
+assert v005_spec.loader is not None
+v005_spec.loader.exec_module(v005)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -305,3 +314,104 @@ def test_v004_rejects_invalid_glow_parameters() -> None:
         v004.outer_glow(r, 0.36, falloff=0.0)
     with pytest.raises(ValueError):
         v004.glow_onset(sharpness=0.0)
+
+
+def test_v005_expression_is_finite_and_symmetric() -> None:
+    x, y = v005.coordinate_grids(width=81, height=65)
+    field = v005.v005_field(x, y)
+    rgb = v005.v005_rgb(width=81, height=65)
+
+    assert field.shape == (65, 81)
+    assert np.isfinite(field).all()
+    assert np.allclose(field, np.fliplr(field))
+
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+    assert np.array_equal(rgb, np.fliplr(rgb))
+
+
+def test_v005_angles_are_wrapped_and_centered_on_each_hole() -> None:
+    x, y = v005.coordinate_grids(width=201, height=201)
+    theta1, theta2 = v005.angular_fields(x, y)
+
+    for theta in (theta1, theta2):
+        assert theta.shape == (201, 201)
+        assert np.isfinite(theta).all()
+        assert theta.min() >= -np.pi - 1.0e-12
+        assert theta.max() <= np.pi + 1.0e-12
+
+    center1, center2 = v005.black_hole_centers()
+    assert center1 == (-0.36, 0.0)
+    assert center2 == (0.36, 0.0)
+
+
+def test_v005_zero_angle_points_at_the_companion() -> None:
+    center1, center2 = v005.black_hole_centers()
+
+    toward2 = np.array([[center1[0] + 0.1]]), np.array([[0.0]])
+    toward1 = np.array([[center2[0] - 0.1]]), np.array([[0.0]])
+
+    theta1, _ = v005.angular_fields(*toward2)
+    _, theta2 = v005.angular_fields(*toward1)
+
+    assert np.allclose(theta1, 0.0)
+    assert np.allclose(theta2, 0.0)
+
+    away2 = np.array([[center1[0] - 0.1]]), np.array([[0.0]])
+    away1 = np.array([[center2[0] + 0.1]]), np.array([[0.0]])
+
+    theta1_away, _ = v005.angular_fields(*away2)
+    _, theta2_away = v005.angular_fields(*away1)
+
+    assert np.allclose(np.abs(theta1_away), np.pi)
+    assert np.allclose(np.abs(theta2_away), np.pi)
+
+
+def test_v005_wrap_angle_folds_into_a_single_turn() -> None:
+    theta = np.linspace(-9.0, 9.0, 512)
+    wrapped = v005.wrap_angle(theta)
+
+    assert wrapped.min() >= -np.pi - 1.0e-12
+    assert wrapped.max() <= np.pi + 1.0e-12
+    assert np.allclose(np.cos(wrapped), np.cos(theta))
+    assert np.allclose(np.sin(wrapped), np.sin(theta))
+    assert np.allclose(v005.wrap_angle(wrapped), wrapped)
+
+
+def test_v005_angular_weight_is_bounded_and_averages_to_one() -> None:
+    theta = np.linspace(-np.pi, np.pi, 4096, endpoint=False)
+
+    for anisotropy in (0.0, 0.35, -0.35, 1.0):
+        weight = v005.angular_weight(theta, anisotropy)
+        assert weight.min() >= 1.0 - abs(anisotropy) - 1.0e-12
+        assert weight.max() <= 1.0 + abs(anisotropy) + 1.0e-12
+        assert np.isclose(weight.mean(), 1.0, atol=1.0e-6)
+        assert np.all(weight >= 0.0)
+
+
+def test_v005_brightens_the_facing_sides_of_each_ring() -> None:
+    x, y = v005.coordinate_grids(width=600, height=600)
+    r1, r2 = v005.radial_fields(x, y)
+    field = v005.v005_field(x, y)
+
+    on_ring1 = np.abs(r1 - 0.25) < 0.02
+    facing = on_ring1 & (x > -0.36)
+    away = on_ring1 & (x < -0.36)
+
+    assert facing.any() and away.any()
+    assert field[facing].mean() > field[away].mean()
+
+
+def test_v005_reduces_to_v004_without_anisotropy() -> None:
+    x, y = v005.coordinate_grids(width=200, height=200)
+
+    assert np.allclose(v005.v005_field(x, y, anisotropy=0.0), v004.v004_field(x, y))
+
+
+def test_v005_rejects_out_of_range_anisotropy() -> None:
+    import pytest
+
+    theta = np.linspace(-np.pi, np.pi, 16)
+    for bad in (1.5, -1.5):
+        with pytest.raises(ValueError):
+            v005.angular_weight(theta, bad)

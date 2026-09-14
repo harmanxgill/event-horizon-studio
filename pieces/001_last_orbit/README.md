@@ -172,7 +172,53 @@ python pieces/001_last_orbit/experiments/v004_outer_glow.py --glow 0.15
 python pieces/001_last_orbit/experiments/v004_outer_glow.py --falloff 2.0
 ```
 
+### v005 - angular fields
+
+Everything so far depends only on `r1` and `r2`, so every version through v004
+is exactly rotationally symmetric about each hole. v005 introduces the missing
+half of the polar coordinates.
+
+The angle is measured from the direction each hole faces its companion, not
+from the `x` axis. `theta1` already has that origin; `theta2` is turned by half
+a rotation and folded back into one turn:
+
+```text
+theta1 = atan2(y - c1y, x - c1x)
+theta2 = wrap(atan2(y - c2y, x - c2x) - pi)
+wrap(t) = atan2(sin t, cos t)
+```
+
+So `theta = 0` points at the companion for both holes and `theta = +-pi` points
+away. The two frames are mirror images, which is what keeps the image
+left-right symmetric even though it is no longer rotationally symmetric.
+
+The first use of the new coordinate is a single cosine on each ring:
+
+```text
+W(theta) = 1 + e cos(theta)
+F(x, y) = exp(-s(r1 - r_ring)^2) W(theta1) + exp(-s(r2 - r_ring)^2) W(theta2)
+```
+
+`W` averages to `1` around a full turn, so the anisotropy `e` redistributes
+ring brightness rather than adding any. At the default `e = 0.35` each ring is
+`1.35` times as bright on the side facing its companion and `0.65` times as
+bright on the far side, which lights up the bridge between the holes. Setting
+`e = 0` reproduces v004 exactly.
+
+Render it with:
+
+```bash
+python pieces/001_last_orbit/experiments/v005_angular_fields.py
+```
+
+Flip the anisotropy to dim the facing sides instead, which separates the two
+holes rather than fusing them:
+
+```bash
+python pieces/001_last_orbit/experiments/v005_angular_fields.py --anisotropy -0.35
+```
+
 Possible next versions:
 
-- v005: angular dependence
 - v006: disk distortion toward the companion
+- v007: orbital phase, rotating the binary axis
