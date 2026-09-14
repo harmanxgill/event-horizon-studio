@@ -496,7 +496,58 @@ python pieces/001_last_orbit/experiments/v010_spiral_decay.py --decay 5
 python pieces/001_last_orbit/experiments/v010_spiral_decay.py --decay 0
 ```
 
+### v011 - shared orbital phase
+
+One parameter now drives both holes. With `p` in `[0, 2 pi)`,
+
+```text
+theta1~ = theta1 - p
+theta2~ = theta2 - p
+```
+
+and every angular term downstream reads `theta~` instead of `theta`: the
+anisotropy, the harmonic, the beaming offset and the spiral winding all turn
+together. `p = 0` reproduces v010 exactly.
+
+Written against the plain angles the second line carries an extra half turn,
+
+```text
+theta2~ = atan2(y, x - a) - p - pi
+```
+
+because `theta2` already includes that `-pi`. It is the offset introduced in
+v005 to make `theta = 0` point at the companion for both holes, and it is
+exactly what lets a single `p` serve the pair.
+
+### Consequences
+
+The field is `2 pi` periodic in `p`, and the half-turn symmetry holds at every
+phase: subtracting the same `p` from both frames preserves
+`theta1(P) = theta2(-P)`, so the pair rotates as one object rather than two.
+
+Total brightness is unchanged by the phase to about `5e-7` relative, inherited
+from v007 normalising the angular profile over a full turn: rotating a profile
+cannot change its mean. The residual is the `4096` sample circular mean, not
+the phase.
+
+`atan2` is undefined at each hole's own centre, where numpy returns `0`. An
+odd-sized grid samples those two points exactly and the raw angle arrays
+disagree there, but both lie at `r = 0`, far inside `r_h = 0.14`, so the
+silhouette masks them and the rendered field is unaffected.
+
+The holes themselves do not move: `p` turns the disks in place while the
+centres stay at `(-a, 0)` and `(a, 0)`. Rotating the binary axis as well is the
+complementary change, and `equations.py` already carries that form as
+`orbit_phase`.
+
+Render one phase, or the four-panel series:
+
+```bash
+python pieces/001_last_orbit/experiments/v011_orbital_phase.py --phase-degrees 90
+python pieces/001_last_orbit/experiments/v011_orbital_phase.py --series
+```
+
 Possible next versions:
 
-- v011: disk distortion toward the companion
-- v012: orbital phase, rotating the binary axis
+- v012: rotating the binary axis with the same phase
+- v013: disk distortion toward the companion

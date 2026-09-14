@@ -109,6 +109,15 @@ assert v010_spec.loader is not None
 v010_spec.loader.exec_module(v010)
 
 
+v011_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v011",
+    PIECE_DIR / "experiments" / "v011_orbital_phase.py",
+)
+v011 = importlib.util.module_from_spec(v011_spec)
+assert v011_spec.loader is not None
+v011_spec.loader.exec_module(v011)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -948,3 +957,123 @@ def test_v010_rejects_negative_decay() -> None:
 
     with pytest.raises(ValueError):
         v010.radial_decay(np.linspace(0.1, 1.0, 8), -0.5)
+
+
+def test_v011_expression_is_finite() -> None:
+    x, y = v011.coordinate_grids(width=81, height=65)
+    field = v011.v011_field(x, y)
+    rgb = v011.v011_rgb(width=81, height=65)
+
+    assert field.shape == (65, 81)
+    assert np.isfinite(field).all()
+
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+
+
+def test_v011_matches_the_plain_angle_specification() -> None:
+    x, y = v011.coordinate_grids(width=101, height=101)
+    a = 0.36
+
+    for phase in (0.0, 0.7, np.pi, 4.9):
+        tilde1, tilde2 = v011.phased_angles(*v011.angular_fields(x, y, a=a), phase)
+
+        plain1 = np.arctan2(y, x + a)
+        plain2 = np.arctan2(y, x - a)
+
+        assert np.allclose(np.cos(tilde1), np.cos(plain1 - phase))
+        assert np.allclose(np.sin(tilde1), np.sin(plain1 - phase))
+        assert np.allclose(np.cos(tilde2), np.cos(plain2 - phase - np.pi))
+        assert np.allclose(np.sin(tilde2), np.sin(plain2 - phase - np.pi))
+
+
+def test_v011_both_frames_follow_one_parameter() -> None:
+    x, y = v011.coordinate_grids(width=201, height=201)
+
+    r1, r2 = v011.radial_fields(x, y)
+    defined = (r1 > 1.0e-12) & (r2 > 1.0e-12)
+
+    for phase in (0.0, 1.1, np.pi, 5.5):
+        tilde1, tilde2 = v011.phased_angles(*v011.angular_fields(x, y), phase)
+        partner = np.rot90(tilde2, 2)
+
+        assert np.allclose(np.cos(tilde1)[defined], np.cos(partner)[defined])
+        assert np.allclose(np.sin(tilde1)[defined], np.sin(partner)[defined])
+
+
+def test_v011_keeps_the_half_turn_symmetry_at_every_phase() -> None:
+    x, y = v011.coordinate_grids(width=201, height=201)
+
+    for degrees in (0, 37, 90, 180, 263):
+        field = v011.v011_field(x, y, phase=np.radians(degrees))
+        assert np.allclose(field, np.rot90(field, 2))
+        assert not np.allclose(field, np.fliplr(field))
+
+
+def test_v011_is_periodic_in_the_phase() -> None:
+    x, y = v011.coordinate_grids(width=150, height=150)
+
+    base = v011.v011_field(x, y, phase=0.9)
+    assert np.allclose(v011.v011_field(x, y, phase=0.9 + 2.0 * np.pi), base)
+    assert np.allclose(v011.v011_field(x, y, phase=0.9 - 2.0 * np.pi), base)
+
+
+def test_v011_phase_conserves_total_brightness() -> None:
+    x, y = v011.coordinate_grids(width=300, height=300)
+
+    means = [v011.v011_field(x, y, phase=np.radians(d)).mean() for d in range(0, 360, 20)]
+
+    assert np.allclose(means, means[0], rtol=1.0e-6)
+
+
+def test_v011_reduces_to_v010_at_zero_phase() -> None:
+    x, y = v011.coordinate_grids(width=200, height=200)
+
+    assert np.allclose(v011.v011_field(x, y, phase=0.0), v010.v010_field(x, y))
+    assert np.array_equal(v011.v011_rgb(120, 120), v010.v010_rgb(120, 120))
+
+
+def test_v011_phase_series_tiles_four_renders() -> None:
+    gap = 4
+    series = v011.phase_series(40, 30, gap=gap)
+
+    assert series.shape == (2 * 30 + gap, 2 * 40 + gap, 3)
+    assert series.dtype == np.uint8
+
+    assert np.array_equal(series[:30, :40], v011.v011_rgb(40, 30, phase=0.0))
+    assert np.array_equal(series[:30, 40 + gap :], v011.v011_rgb(40, 30, phase=0.5 * np.pi))
+    assert np.array_equal(series[30 + gap :, :40], v011.v011_rgb(40, 30, phase=np.pi))
+
+
+def test_v011_keeps_the_silhouettes_solid() -> None:
+    x, y = v011.coordinate_grids(width=400, height=400)
+    r1, r2 = v011.radial_fields(x, y)
+
+    margin = 6.0 * v011.grid_spacing(x, y)
+    inside = np.minimum(r1, r2) <= 0.14 - margin
+    assert inside.any()
+
+    for degrees in (0, 90, 215):
+        field = v011.v011_field(x, y, phase=np.radians(degrees))
+        assert field[inside].max() < 1.0e-2
+
+
+def test_v011_phase_series_requires_four_phases() -> None:
+    import pytest
+
+    with pytest.raises(ValueError):
+        v011.phase_series(20, 20, phases=(0.0, np.pi))
+
+
+def test_v011_angle_singularity_sits_inside_the_horizon() -> None:
+    x, y = v011.coordinate_grids(width=201, height=201)
+    r1, r2 = v011.radial_fields(x, y)
+
+    singular = (r1 < 1.0e-12) | (r2 < 1.0e-12)
+    assert singular.sum() == 2
+
+    assert np.all(np.minimum(r1, r2)[singular] < 0.14)
+
+    field = v011.v011_field(x, y, phase=1.1)
+    assert np.all(field[singular] < 1.0e-6)
+    assert np.allclose(field, np.rot90(field, 2))
