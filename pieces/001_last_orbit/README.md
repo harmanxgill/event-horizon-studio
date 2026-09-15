@@ -1249,7 +1249,66 @@ python pieces/001_last_orbit/experiments/v023_mathematical_background.py --epsil
 
 `--epsilon-b 0.03` makes the arms plainly visible, for checking what is there.
 
+### v024 - fine structure
+
+High-frequency detail, but only where there is already light. Each hole's
+Doppler-scaled disk `S_i'` from v020 is multiplied by a structure factor:
+
+```text
+product   N_i = 1 + e_n sin(k_r r_i + m theta_i) sin(k_t theta_i)
+log       N_i = 1 + e_n sin(k_r r_i + m theta_i + c ln(r_i + s))
+S_i'' = S_i' N_i
+```
+
+The logarithmic form is the default; `--structure product` selects the other.
+Defaults are `e_n = 0.35`, `k_r = 90`, `m = 24`, `k_t = 16`, `c = 6`, `s = 0.02`.
+
+No procedural noise is involved. The product form crosses a spiral phase with
+a purely angular one, which weaves the disks into a fine feathered lattice. The
+log form adds `c ln(r + s)` to the phase, so the local radial frequency is
+`k_r + c / (r + s)`: higher near the horizon than further out, `125` against
+`100` between `r = 0.15` and `r = 0.6`, about `26%`. The result is continuous spiral fibres that
+tighten toward each hole.
+
+### Where it applies
+
+Because `N_i` multiplies the disks and nothing else, the structure appears only
+inside them. Where the disks carry no light it changes no pixel by more than
+one level, and the corners of the frame not at all. The bridge, tails, halo and
+background of earlier versions are untouched. Inside the lit disks the red
+channel moves by about `5` levels on average and up to `29` at the brightest
+fibres.
+
+`r_i` and `theta_i` are the distorted radii of v012 and the phased angles of
+v011, the same coordinates the disks are drawn in, so the fibres stretch toward
+the companion and turn with the orbit along with the light they sit on.
+
+`N_i` averages to `1` over a cycle, so the structure redistributes brightness
+rather than adding it: mean intensity over the lit disks moves by well under
+`1%`.
+
+### Continuity and aliasing
+
+`m` and `k_t` multiply an angle that jumps from `pi` to `-pi` on one side of
+each hole, so both must be integers or the fibres tear along a straight line, as
+the tails did in v015. Fractional values are rejected.
+
+Frequencies this high can alias. The shortest wavelength of the structure is
+`2 pi / |grad Psi|` for its phase `Psi`, and it is shortest at the inner edge of
+each disk, where the angular term `m / r` is largest. Measured from the phase
+gradient over the visible lit area, the shortest cycle is `17` pixels at
+`1200x1200` and `8` pixels at `512x512`, so the fibres stay well clear of the
+two-pixel limit even at small render sizes. Between the holes the two disks'
+fibres overlap and cross; that interference is real superposition, not moiré.
+
+```bash
+python pieces/001_last_orbit/experiments/v024_fine_structure.py
+python pieces/001_last_orbit/experiments/v024_fine_structure.py --structure product
+python pieces/001_last_orbit/experiments/v024_fine_structure.py --c-n 20 --m-n 12
+python pieces/001_last_orbit/experiments/v024_fine_structure.py --epsilon-n 0
+```
+
 Possible next versions:
 
-- v024: Doppler colour from the velocity field
-- v025: separation shrinking as the orbit decays
+- v025: Doppler colour from the velocity field
+- v026: separation shrinking as the orbit decays

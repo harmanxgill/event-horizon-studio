@@ -226,6 +226,15 @@ assert v023_spec.loader is not None
 v023_spec.loader.exec_module(v023)
 
 
+v024_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v024",
+    PIECE_DIR / "experiments" / "v024_fine_structure.py",
+)
+v024 = importlib.util.module_from_spec(v024_spec)
+assert v024_spec.loader is not None
+v024_spec.loader.exec_module(v024)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -2752,3 +2761,150 @@ def test_v023_rejects_invalid_background_parameters() -> None:
     for kwargs in ({"epsilon_b": -0.1}, {"gamma_b": -1.0}, {"eta_b": 1.5}, {"eta_b": -0.1}):
         with pytest.raises(ValueError):
             v023.mathematical_background(rho, theta, **kwargs)
+
+
+def _v024_disks(n: int):
+    x, y = v024.coordinate_grids(width=n, height=n)
+    r1, r2 = v024.radial_fields(x, y)
+    anchored = v024.angular_fields(x, y)
+    theta1, theta2 = v024.phased_angles(*anchored, 0.0)
+    d1, d2 = v024.distorted_radii(r1, r2, *anchored, -0.30)
+    s1, s2 = v024.ring_components(d1, d2, theta1, theta2)
+    return x, y, r1, r2, d1, d2, theta1, theta2, s1, s2
+
+
+def test_v024_render_is_well_formed() -> None:
+    x, y = v024.coordinate_grids(width=81, height=65)
+
+    for structure in v024.STRUCTURES:
+        field = v024.v024_field(x, y, structure=structure)
+        rgb = v024.v024_rgb(width=81, height=65, structure=structure)
+
+        assert np.isfinite(field).all()
+        assert rgb.shape == (65, 81, 3)
+        assert rgb.dtype == np.uint8
+
+
+def test_v024_structure_matches_both_specified_forms() -> None:
+    r = np.linspace(0.05, 1.2, 777)
+    theta = np.linspace(-np.pi, np.pi, 777)
+
+    product = v024.fine_structure(r, theta, structure="product")
+    expected_product = 1.0 + 0.35 * np.sin(90.0 * r + 24 * theta) * np.sin(16 * theta)
+    assert np.allclose(product, expected_product)
+
+    logarithmic = v024.fine_structure(r, theta, structure="log")
+    expected_log = 1.0 + 0.35 * np.sin(90.0 * r + 24 * theta + 6.0 * np.log(r + 0.02))
+    assert np.allclose(logarithmic, expected_log)
+
+
+def test_v024_structure_factor_is_bounded_and_non_negative() -> None:
+    r = np.linspace(0.0, 1.5, 4000)
+    theta = np.linspace(-np.pi, np.pi, 4000)
+
+    for structure in v024.STRUCTURES:
+        for epsilon_n in (0.35, 1.0):
+            factor = v024.fine_structure(r, theta, structure=structure, epsilon_n=epsilon_n)
+            assert factor.min() >= 1.0 - epsilon_n - 1.0e-12
+            assert factor.max() <= 1.0 + epsilon_n + 1.0e-12
+            assert factor.min() >= 0.0
+
+
+def test_v024_log_term_varies_the_radial_frequency() -> None:
+    r = np.array([0.15, 0.3, 0.6])
+    k_r, c_n, soft_n = 90.0, 6.0, 0.02
+
+    local = k_r + c_n / (r + soft_n)
+    assert np.all(np.diff(local) < 0.0)
+    assert local[0] / local[-1] > 1.1
+
+
+def test_v024_integer_frequencies_keep_the_structure_continuous() -> None:
+    radius = np.full(2, 0.3)
+    across = np.array([np.pi - 1.0e-9, -np.pi + 1.0e-9])
+
+    for structure in v024.STRUCTURES:
+        factor = v024.fine_structure(radius, across, structure=structure)
+        assert np.isclose(factor[0], factor[1], atol=1.0e-6)
+
+    import pytest
+
+    for kwargs in ({"m_n": 23.5}, {"k_theta": 7.5}):
+        with pytest.raises(ValueError):
+            v024.fine_structure(radius, across, **kwargs)
+
+
+def test_v024_structure_lives_only_in_the_disks() -> None:
+    x, y, r1, r2, _, _, _, _, s1, s2 = _v024_disks(600)
+
+    new = v024.v024_rgb(600, 600).astype(int)
+    old = v023.v023_rgb(600, 600).astype(int)
+    difference = np.abs(new - old)
+
+    dark_disks = np.maximum(s1, s2) < 1.0e-6
+    lit_disks = (np.maximum(s1, s2) > 0.05) & (np.minimum(r1, r2) > 0.16)
+    corner = (np.abs(x) > 0.85) & (np.abs(y) > 0.85)
+
+    assert difference[dark_disks].max() <= 1
+    assert difference[corner].max() == 0
+    assert difference[..., 0][lit_disks].mean() > 2.0
+
+
+def test_v024_structure_barely_moves_mean_brightness() -> None:
+    x, y, r1, r2, _, _, _, _, s1, s2 = _v024_disks(600)
+    lit = (np.maximum(s1, s2) > 0.02) & (np.minimum(r1, r2) > 0.16)
+
+    before = v023.v023_field(x, y)[lit].mean()
+    for structure in v024.STRUCTURES:
+        after = v024.v024_field(x, y, structure=structure)[lit].mean()
+        assert abs(after - before) < 0.01 * before
+
+
+def test_v024_does_not_alias_at_small_render_sizes() -> None:
+    k_r, m_n, c_n = 90.0, 24, 6.0
+
+    for n in (512, 1200):
+        x, y, r1, r2, d1, d2, theta1, _, s1, _ = _v024_disks(n)
+        h = v024.grid_spacing(x, y)
+        lit = (s1 > 0.02) & (np.minimum(r1, r2) > 0.14 + 3.0 * h)
+
+        phase = k_r * d1 + m_n * theta1 + c_n * np.log(d1 + 0.02)
+        gy_c, gx_c = np.gradient(np.cos(phase), h)
+        gy_s, gx_s = np.gradient(np.sin(phase), h)
+        gradient = np.hypot(
+            np.cos(phase) * gx_s - np.sin(phase) * gx_c,
+            np.cos(phase) * gy_s - np.sin(phase) * gy_c,
+        )
+        pixels_per_cycle = 2.0 * np.pi / (np.maximum(gradient, 1.0e-9) * h)
+
+        assert np.percentile(pixels_per_cycle[lit], 0.5) > 4.0
+
+
+def test_v024_reduces_to_v023_without_structure() -> None:
+    x, y = v024.coordinate_grids(width=200, height=200)
+
+    for structure in v024.STRUCTURES:
+        assert np.allclose(
+            v024.v024_field(x, y, structure=structure, epsilon_n=0.0), v023.v023_field(x, y)
+        )
+    assert np.array_equal(v024.v024_rgb(120, 120, epsilon_n=0.0), v023.v023_rgb(120, 120))
+
+
+def test_v024_keeps_the_horizons_black() -> None:
+    x, y = v024.coordinate_grids(width=400, height=400)
+    r1, r2 = v024.radial_fields(x, y)
+
+    margin = 6.0 * v024.grid_spacing(x, y)
+    inside = np.minimum(r1, r2) <= 0.14 - margin
+    assert inside.any()
+    assert v024.v024_rgb(400, 400)[inside].max() <= 10
+
+
+def test_v024_rejects_invalid_structure_parameters() -> None:
+    import pytest
+
+    r = np.linspace(0.1, 1.0, 8)
+    theta = np.zeros(8)
+    for kwargs in ({"structure": "noise"}, {"epsilon_n": 1.5}, {"epsilon_n": -0.1}, {"soft_n": 0.0}):
+        with pytest.raises(ValueError):
+            v024.fine_structure(r, theta, **kwargs)
