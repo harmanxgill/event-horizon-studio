@@ -1109,7 +1109,100 @@ python pieces/001_last_orbit/experiments/v021_nonlinear_intensity.py --gamma-l 0
 python pieces/001_last_orbit/experiments/v021_nonlinear_intensity.py --tone linear
 ```
 
+### v022 - RGB equations
+
+Colour is now a set of equations in the compressed intensity `L` of v021 and
+the quadrupole wave `W` of v018:
+
+```text
+R = 1 - exp(-4 L)
+G = (1 - exp(-2 L))   (1 + 0.05 W)
+B = (1 - exp(-0.7 L)) (1 + 0.10 W)
+C = clamp([R, G, B], 0, 1)
+```
+
+Every pixel of the image is now the value of a written formula, from the
+coordinates through the fields to the three channels.
+
+The experiments never used a premade colormap: the v001 ramp and v021's ramp
+were both per-channel formulas already. What changes here is that colour stops
+being a fixed ramp bolted on at the end and becomes its own set of equations
+with a field of their own feeding in. The only premade colormap left in the
+repository is matplotlib's `magma`, in the original `render.py`.
+
+The channel rates are `rate_r`, `rate_g` and `rate_b`, since `k_g` is already
+the wave number, and the tints are `shift_g` and `shift_b`.
+
+### What the equations do
+
+For faint light each channel is close to linear, `R : G : B ~ 4 : 2 : 0.7`,
+which is `1 : 0.500 : 0.175`. That is almost exactly the `1 : 0.527 : 0.164` of
+the ramp the piece started with in v001, so the dim structure keeps its
+original amber. The channels then saturate at different rates, red first and
+blue last, so hue warms toward gold as `L` rises.
+
+The brightest colour the equations can make is gold, not white. At `L = 1`
+
+```text
+(0.982, 0.865, 0.503)  ->  (250, 220, 128)
+```
+
+because `1 - exp(-0.7)` is only `0.50`. v021's ramp whitened the bridge; this
+one keeps it gold. The channels stay ordered `R >= G >= B` everywhere.
+
+The wave leaves red untouched and tints green by at most `5%` and blue by at
+most `10%`: a faint cool-warm shimmer following the two-armed spiral, too small
+to read as rings.
+
+### Two corrections the first render needed
+
+Taken at v021's settings, the equations washed the frame out. `L` is already a
+compression of the raw field, `1 - exp(-1.4 F)`, and `R = 1 - exp(-4 L)`
+compresses it a second time. Faint light is multiplied by about `4` on the way
+through, so the dim background v016 left in the corners came out as tan rather
+than near-black:
+
+```text
+                        corner luma   p99 / p5 contrast
+v021                        13.5            17.1x
+v022 at g = 1.4             58.0             3.5x
+v022 at g = 0.25            12.4            13.0x
+```
+
+The fix belongs to the tone curve rather than the colour: the rate `g` in `L`
+was chosen in v021 for a linear ramp, and v022 sets it to `0.25`, which puts the
+corners back where v021 had them and restores most of the contrast. The colour
+rates stay exactly as written. With less compression the brightest pixel in
+the frame is now `L = 0.76`, which colours to `(243, 199, 105)`.
+
+The first render also showed a small pinch at the exact centre of the frame.
+`W = cos(2 Theta - k_g rho) / (1 + g_w rho)` has its largest amplitude at
+`rho = 0`, which is exactly where `Theta` has no value, so the tint swung
+through every angle within a couple of pixels: blue went from `116` to `141`
+around a circle of radius `0.012`. The wave is now tapered at its core,
+
+```text
+W -> W (1 - exp(-(rho / 0.06)^2))
+```
+
+which is zero at the origin and leaves `W` unchanged to within `6e-10` beyond
+`rho = 0.25`. The same swing shrinks to three levels. The taper applies
+wherever `W` is used, including v018's intensity modulation, which had the same
+singularity hidden under saturation until now.
+
+Setting `--gamma-l 1.4 --core-w 0` reproduces v021's intensity exactly.
+
+```bash
+python pieces/001_last_orbit/experiments/v022_rgb_equations.py
+python pieces/001_last_orbit/experiments/v022_rgb_equations.py --rate-b 2.5
+python pieces/001_last_orbit/experiments/v022_rgb_equations.py --shift-g 0 --shift-b 0
+python pieces/001_last_orbit/experiments/v022_rgb_equations.py --gamma-l 1.4 --core-w 0
+```
+
+`--rate-b 2.5` lets the brightest light approach white again; the last command
+shows the washed-out, pinched version for comparison.
+
 Possible next versions:
 
-- v022: Doppler colour from the velocity field
-- v023: separation shrinking as the orbit decays
+- v023: Doppler colour from the velocity field
+- v024: separation shrinking as the orbit decays

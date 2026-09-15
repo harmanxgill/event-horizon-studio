@@ -208,6 +208,15 @@ assert v021_spec.loader is not None
 v021_spec.loader.exec_module(v021)
 
 
+v022_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v022",
+    PIECE_DIR / "experiments" / "v022_rgb_equations.py",
+)
+v022 = importlib.util.module_from_spec(v022_spec)
+assert v022_spec.loader is not None
+v022_spec.loader.exec_module(v022)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -2450,3 +2459,173 @@ def test_v021_rejects_invalid_tone_parameters() -> None:
     for kwargs in ({"p_l": 0.0}, {"k_l": -1.0}):
         with pytest.raises(ValueError):
             v021.compress_intensity(field, tone="hill", **kwargs)
+
+
+def test_v022_render_is_well_formed() -> None:
+    rgb = v022.v022_rgb(width=81, height=65)
+
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+
+
+def test_v022_colour_matches_the_specification() -> None:
+    level = np.linspace(0.0, 1.0, 257)[None, :]
+    wave = np.linspace(-1.0, 1.0, 257)[None, :]
+
+    colour = v022.colour_equations(level, wave)
+
+    red = 1.0 - np.exp(-4.0 * level)
+    green = (1.0 - np.exp(-2.0 * level)) * (1.0 + 0.05 * wave)
+    blue = (1.0 - np.exp(-0.7 * level)) * (1.0 + 0.10 * wave)
+
+    assert np.allclose(colour[..., 0], np.clip(red, 0.0, 1.0))
+    assert np.allclose(colour[..., 1], np.clip(green, 0.0, 1.0))
+    assert np.allclose(colour[..., 2], np.clip(blue, 0.0, 1.0))
+
+
+def test_v022_colour_is_clamped_to_the_unit_cube() -> None:
+    level = np.linspace(-0.5, 20.0, 2001)[None, :]
+
+    for wave in (-1.0, 0.0, 1.0):
+        colour = v022.colour_equations(level, wave, shift_g=0.9, shift_b=0.9)
+        assert colour.min() >= 0.0
+        assert colour.max() <= 1.0
+
+
+def test_v022_intensity_reduces_to_v021() -> None:
+    x, y = v022.coordinate_grids(width=200, height=200)
+
+    # v022 retunes the tone rate and tapers the wave core; undoing both
+    # recovers v021's intensity exactly
+    assert np.allclose(v022.v022_field(x, y, gamma_l=1.4, core_w=0.0), v021.v021_field(x, y))
+    assert not np.allclose(v022.v022_field(x, y), v021.v021_field(x, y))
+
+
+def test_v022_colour_equations_do_not_wash_out_the_background() -> None:
+    x, y = v022.coordinate_grids(width=600, height=600)
+    r1, r2 = v022.radial_fields(x, y)
+    lit = np.minimum(r1, r2) > 0.16
+    corner = (np.abs(x) > 0.85) & (np.abs(y) > 0.85)
+
+    def luma(rgb: np.ndarray) -> np.ndarray:
+        rgb = rgb.astype(float)
+        return 0.2126 * rgb[..., 0] + 0.7152 * rgb[..., 1] + 0.0722 * rgb[..., 2]
+
+    def contrast(rgb: np.ndarray) -> float:
+        low, high = np.percentile(luma(rgb)[lit], [5.0, 99.0])
+        return float(high / low)
+
+    doubled = v022.v022_rgb(600, 600, gamma_l=1.4)
+    tuned = v022.v022_rgb(600, 600)
+    reference = v021.v021_rgb(600, 600)
+
+    assert contrast(doubled) < 5.0
+    assert contrast(tuned) > 10.0
+    assert abs(luma(tuned)[corner].mean() - luma(reference)[corner].mean()) < 5.0
+    assert luma(doubled)[corner].mean() > 3.0 * luma(tuned)[corner].mean()
+
+
+def test_v022_core_taper_removes_the_pinch_at_the_origin() -> None:
+    x, y = v022.coordinate_grids(width=600, height=600)
+    rho, _ = v022.global_polar(x, y)
+    near = (rho > 0.004) & (rho < 0.02)
+    assert near.any()
+
+    tapered = v022.v022_rgb(600, 600)[..., 2][near].astype(int)
+    pinched = v022.v022_rgb(600, 600, core_w=0.0)[..., 2][near].astype(int)
+
+    assert np.ptp(pinched) > 15
+    assert np.ptp(tapered) < 6
+
+
+def test_v022_core_taper_is_local() -> None:
+    rho = np.linspace(0.0, 1.4, 5000)
+    theta = np.linspace(-np.pi, np.pi, 5000)
+
+    tapered = v022.quadrupole_wave(rho, theta)
+    plain = v022.quadrupole_wave(rho, theta, core_w=0.0)
+
+    assert tapered[0] == 0.0
+    assert np.allclose(tapered[rho > 0.25], plain[rho > 0.25], atol=1.0e-9)
+    assert np.all(np.abs(tapered) <= np.abs(plain) + 1.0e-12)
+
+    import pytest
+
+    with pytest.raises(ValueError):
+        v022.quadrupole_wave(rho, theta, core_w=-0.1)
+
+
+def test_v022_faint_hue_recovers_the_original_warm_ratios() -> None:
+    faint = v022.colour_equations(np.array([[1.0e-4]]))[0, 0]
+
+    assert np.isclose(faint[1] / faint[0], 2.0 / 4.0, rtol=1.0e-3)
+    assert np.isclose(faint[2] / faint[0], 0.7 / 4.0, rtol=1.0e-3)
+    assert abs(faint[1] / faint[0] - 0.58 / 1.10) < 0.05
+    assert abs(faint[2] / faint[0] - 0.18 / 1.10) < 0.05
+
+
+def test_v022_brightest_colour_is_gold_not_white() -> None:
+    top = v022.to_pixels(v022.colour_equations(np.array([[1.0]])))[0, 0]
+
+    assert tuple(int(c) for c in top) == (250, 220, 128)
+    assert top[2] < 200
+
+
+def test_v022_channels_are_ordered_and_monotone_without_the_wave() -> None:
+    level = np.linspace(0.0, 1.0, 1001)[None, :]
+    colour = v022.colour_equations(level)[0]
+
+    for channel in range(3):
+        assert np.all(np.diff(colour[:, channel]) >= 0.0)
+    assert np.all(colour[:, 0] >= colour[:, 1])
+    assert np.all(colour[:, 1] >= colour[:, 2])
+
+
+def test_v022_wave_tints_green_and_blue_but_not_red() -> None:
+    x, y = v022.coordinate_grids(width=300, height=300)
+    level = v022.v022_field(x, y)
+    rho, theta = v022.global_polar(x, y)
+    wave = v022.quadrupole_wave(rho, theta)
+
+    tinted = v022.colour_equations(level, wave)
+    plain = v022.colour_equations(level, 0.0)
+
+    assert np.allclose(tinted[..., 0], plain[..., 0])
+
+    lit = plain[..., 2] > 0.05
+    green_ratio = tinted[..., 1][lit] / plain[..., 1][lit]
+    blue_ratio = tinted[..., 2][lit] / plain[..., 2][lit]
+
+    assert np.abs(green_ratio - 1.0).max() <= 0.05 + 1.0e-9
+    assert np.abs(blue_ratio - 1.0).max() <= 0.10 + 1.0e-9
+    assert np.abs(blue_ratio - 1.0).max() > np.abs(green_ratio - 1.0).max()
+
+
+def test_v022_render_uses_the_colour_equations() -> None:
+    x, y = v022.coordinate_grids(width=120, height=120)
+    level = v022.v022_field(x, y)
+    rho, theta = v022.global_polar(x, y)
+
+    expected = v022.to_pixels(v022.colour_equations(level, v022.quadrupole_wave(rho, theta)))
+    assert np.array_equal(v022.v022_rgb(120, 120), expected)
+
+
+def test_v022_keeps_the_horizons_black() -> None:
+    x, y = v022.coordinate_grids(width=400, height=400)
+    r1, r2 = v022.radial_fields(x, y)
+
+    margin = 6.0 * v022.grid_spacing(x, y)
+    inside = np.minimum(r1, r2) <= 0.14 - margin
+    assert inside.any()
+
+    rgb = v022.v022_rgb(400, 400)
+    assert rgb[inside].max() <= 10
+
+
+def test_v022_rejects_invalid_colour_parameters() -> None:
+    import pytest
+
+    level = np.zeros((2, 2))
+    for kwargs in ({"rate_r": 0.0}, {"rate_b": -1.0}, {"shift_g": 1.0}, {"shift_b": -1.2}):
+        with pytest.raises(ValueError):
+            v022.colour_equations(level, **kwargs)
