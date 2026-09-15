@@ -1045,7 +1045,71 @@ python pieces/001_last_orbit/experiments/v020_doppler_luminosity.py --phase-degr
 python pieces/001_last_orbit/experiments/v020_doppler_luminosity.py --beta-d 0
 ```
 
+### v021 - nonlinear intensity
+
+By v020 the raw field has a `47x` spread between its 10th and 99.9th
+percentiles, peaking at `6.26`. Rendered linearly, the red channel sits flat at
+`255` over `9.9%` of the lit area, while only `0.07%` of pixels ever reach
+white. v021 compresses the field into `[0, 1)` before colouring it:
+
+```text
+exponential   L = 1 - exp(-g F)
+hill          L = F^p / (F^p + k)
+```
+
+Both fix `0` at `0`, so the horizons stay black, and both rise monotonically
+toward `1`. The Hill form reaches exactly `1/2` at `F = k^(1/p)`, which is what
+makes it the more controllable of the two.
+
+### The colour ramp had to change
+
+The ramp in use since v001 maps a field value `f` to
+`(1.10 f, 0.58 f, 0.18 f)`, clipped. At `f = 1` that is `(255, 148, 46)`, which is
+orange. The white in earlier renders only appeared because the raw field
+overshot `1` far enough for every channel to clip, so a compressed field in
+`[0, 1)` fed to that ramp could never whiten anything. That defeats the point of
+the version.
+
+v021 colours `L` with a ramp that reaches white at `L = 1` instead:
+
+```text
+(L, L^1.5, L^2.5)
+```
+
+Red rises first, then green, then blue, so faint light stays deep amber and
+bright light passes through yellow to white. All three channels are monotone
+and ordered `R >= G >= B` at every level. Mid-tones come out browner and less
+saturated than under the old ramp.
+
+### Defaults and measurements
+
+`g = 1.4` was chosen from the field's own distribution, placing the median at
+`L = 0.30` and the 99th percentile at `0.99`:
+
+```text
+                     near-white   red flat-clipped   faint-half red levels
+v020, linear ramp       0.10%          9.87%                55
+exponential             0.98%          0.45%                56
+hill (p 1.5, k 0.56)    0.00%          0.00%                42
+```
+
+The exponential form whitens ten times as much of the frame, removes almost
+all of the flat clipping, and keeps the faint half's tonal range while making
+it brighter on average. The Hill form at these settings never reaches white,
+since its 99th percentile only maps to `0.92`, and it darkens the faint half; a
+smaller `k` pushes it brighter.
+
+`--tone linear` skips the compression and uses the old ramp, reproducing v020
+exactly.
+
+```bash
+python pieces/001_last_orbit/experiments/v021_nonlinear_intensity.py
+python pieces/001_last_orbit/experiments/v021_nonlinear_intensity.py --tone hill --k-l 0.2
+python pieces/001_last_orbit/experiments/v021_nonlinear_intensity.py --gamma-l 0.7
+python pieces/001_last_orbit/experiments/v021_nonlinear_intensity.py --tone linear
+```
+
 Possible next versions:
 
-- v021: Doppler colour from the velocity field
-- v022: separation shrinking as the orbit decays
+- v022: Doppler colour from the velocity field
+- v023: separation shrinking as the orbit decays

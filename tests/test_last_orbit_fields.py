@@ -199,6 +199,15 @@ assert v020_spec.loader is not None
 v020_spec.loader.exec_module(v020)
 
 
+v021_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v021",
+    PIECE_DIR / "experiments" / "v021_nonlinear_intensity.py",
+)
+v021 = importlib.util.module_from_spec(v021_spec)
+assert v021_spec.loader is not None
+v021_spec.loader.exec_module(v021)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -2299,3 +2308,145 @@ def test_v020_rejects_invalid_doppler_parameters() -> None:
             v020.doppler_factor_inspired(velocity, beta_d=bad)
     with pytest.raises(ValueError):
         v020.doppler_factor_inspired(velocity, p_d=-1.0)
+
+
+def test_v021_expression_is_finite() -> None:
+    x, y = v021.coordinate_grids(width=81, height=65)
+
+    for tone in v021.TONES:
+        field = v021.v021_field(x, y, tone=tone)
+        rgb = v021.v021_rgb(width=81, height=65, tone=tone)
+
+        assert field.shape == (65, 81)
+        assert np.isfinite(field).all()
+        assert rgb.shape == (65, 81, 3)
+        assert rgb.dtype == np.uint8
+
+
+def test_v021_compressions_match_the_specification() -> None:
+    field = np.linspace(0.0, 8.0, 4001)
+
+    for gamma_l in (0.5, 1.4, 3.0):
+        assert np.allclose(
+            v021.compress_intensity(field, tone="exponential", gamma_l=gamma_l),
+            1.0 - np.exp(-gamma_l * field),
+        )
+    for p_l, k_l in ((1.5, 0.56), (0.7, 2.0)):
+        assert np.allclose(
+            v021.compress_intensity(field, tone="hill", p_l=p_l, k_l=k_l),
+            field**p_l / (field**p_l + k_l),
+        )
+
+
+def test_v021_compressions_are_bounded_monotone_and_fix_zero() -> None:
+    field = np.linspace(0.0, 50.0, 20001)
+    # the real field peaks near 6; 1 - exp(-1.4 F) only rounds to exactly 1.0
+    # in float64 beyond F = 27, so strictness is checked over a realistic range
+    realistic = field <= 10.0
+
+    for tone in ("exponential", "hill"):
+        level = v021.compress_intensity(field, tone=tone)
+
+        assert level[0] == 0.0
+        assert np.all(level <= 1.0)
+        assert np.all(level[realistic] < 1.0)
+        assert np.all(np.diff(level) >= 0.0)
+        assert level[-1] > 0.95
+
+
+def test_v021_hill_half_level_sits_at_k_to_the_one_over_p() -> None:
+    for p_l, k_l in ((1.5, 0.56), (2.0, 0.25), (0.8, 3.0)):
+        half = np.array([k_l ** (1.0 / p_l)])
+        assert np.isclose(v021.compress_intensity(half, tone="hill", p_l=p_l, k_l=k_l)[0], 0.5)
+
+
+def test_v021_linear_tone_reproduces_v020() -> None:
+    x, y = v021.coordinate_grids(width=200, height=200)
+
+    assert np.allclose(v021.v021_field(x, y, tone="linear"), v020.v020_field(x, y))
+    assert np.array_equal(v021.v021_rgb(120, 120, tone="linear"), v020.v020_rgb(120, 120))
+
+
+def test_v021_old_ramp_could_never_reach_white_from_a_compressed_field() -> None:
+    from event_horizon.color import warm_rgb
+
+    brightest = warm_rgb(np.array([[1.0]]))[0, 0]
+    assert brightest[0] == 255 and brightest[2] < 60
+
+    white = v021.tone_rgb(np.array([[1.0]]))[0, 0]
+    assert np.all(white == 255)
+
+
+def test_v021_tone_ramp_is_warm_monotone_and_black_at_zero() -> None:
+    level = np.linspace(0.0, 1.0, 1001)[None, :]
+    rgb = v021.tone_rgb(level)[0].astype(int)
+
+    assert np.all(rgb[0] == 0)
+    for channel in range(3):
+        assert np.all(np.diff(rgb[:, channel]) >= 0)
+    assert np.all(rgb[:, 0] >= rgb[:, 1])
+    assert np.all(rgb[:, 1] >= rgb[:, 2])
+
+
+def test_v021_bright_structure_whitens_without_flattening() -> None:
+    from event_horizon.color import warm_rgb
+
+    x, y = v021.coordinate_grids(width=600, height=600)
+    r1, r2 = v021.radial_fields(x, y)
+    lit = np.minimum(r1, r2) > 0.16
+
+    raw = v020.v020_field(x, y)
+    old = warm_rgb(raw)
+    new = v021.v021_rgb(600, 600)
+
+    def near_white(rgb: np.ndarray) -> float:
+        return float(np.mean((rgb[lit] >= 250).all(axis=1)))
+
+    def red_flat(rgb: np.ndarray) -> float:
+        return float(np.mean(rgb[..., 0][lit] == 255))
+
+    assert near_white(new) > 5.0 * near_white(old)
+    assert red_flat(new) < 0.1 * red_flat(old)
+
+
+def test_v021_keeps_the_faint_structure() -> None:
+    from event_horizon.color import warm_rgb
+
+    x, y = v021.coordinate_grids(width=600, height=600)
+    r1, r2 = v021.radial_fields(x, y)
+    lit = np.minimum(r1, r2) > 0.16
+
+    raw = v020.v020_field(x, y)
+    faint = lit & (raw < np.percentile(raw[lit], 50.0))
+
+    old = warm_rgb(raw)[..., 0][faint]
+    new = v021.v021_rgb(600, 600)[..., 0][faint]
+
+    assert len(np.unique(new)) >= len(np.unique(old))
+    assert new.mean() >= old.mean()
+
+
+def test_v021_keeps_the_silhouettes_black() -> None:
+    x, y = v021.coordinate_grids(width=400, height=400)
+    r1, r2 = v021.radial_fields(x, y)
+
+    margin = 6.0 * v021.grid_spacing(x, y)
+    inside = np.minimum(r1, r2) <= 0.14 - margin
+    assert inside.any()
+
+    for tone in ("exponential", "hill"):
+        level = v021.v021_field(x, y, tone=tone)
+        assert level[inside].max() < 1.0e-2
+
+
+def test_v021_rejects_invalid_tone_parameters() -> None:
+    import pytest
+
+    field = np.linspace(0.0, 1.0, 8)
+    with pytest.raises(ValueError):
+        v021.compress_intensity(field, tone="gamma")
+    with pytest.raises(ValueError):
+        v021.compress_intensity(field, tone="exponential", gamma_l=0.0)
+    for kwargs in ({"p_l": 0.0}, {"k_l": -1.0}):
+        with pytest.raises(ValueError):
+            v021.compress_intensity(field, tone="hill", **kwargs)

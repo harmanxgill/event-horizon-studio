@@ -14,7 +14,7 @@ Finished images can go in `gallery/`.
 
 | Piece | Status | Notes |
 | --- | --- | --- |
-| [001 - The Last Orbit](https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit "https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit") | v020 | Equal-mass binary black holes in the final orbit before merger. |
+| [001 - The Last Orbit](https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit "https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit") | v021 | Equal-mass binary black holes in the final orbit before merger. |
 
 ## Installation
 
@@ -29,13 +29,13 @@ pip install -e ".[dev]"
 Render the latest version:
 
 ```bash
-python pieces/001_last_orbit/experiments/v020_doppler_luminosity.py
+python pieces/001_last_orbit/experiments/v021_nonlinear_intensity.py
 ```
 
 Render it smaller:
 
 ```bash
-python pieces/001_last_orbit/experiments/v020_doppler_luminosity.py --width 512 --height 512
+python pieces/001_last_orbit/experiments/v021_nonlinear_intensity.py --width 512 --height 512
 ```
 
 Earlier versions still render on their own:
@@ -60,6 +60,7 @@ python pieces/001_last_orbit/experiments/v016_global_potential.py
 python pieces/001_last_orbit/experiments/v017_outgoing_wave.py
 python pieces/001_last_orbit/experiments/v018_quadrupolar_field.py
 python pieces/001_last_orbit/experiments/v019_velocity_field.py
+python pieces/001_last_orbit/experiments/v020_doppler_luminosity.py
 ```
 
 The current renders use a square `1200x1200` default so the images line up cleanly.
