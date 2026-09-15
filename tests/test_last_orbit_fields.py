@@ -181,6 +181,15 @@ assert v018_spec.loader is not None
 v018_spec.loader.exec_module(v018)
 
 
+v019_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v019",
+    PIECE_DIR / "experiments" / "v019_velocity_field.py",
+)
+v019 = importlib.util.module_from_spec(v019_spec)
+assert v019_spec.loader is not None
+v019_spec.loader.exec_module(v019)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -2038,3 +2047,133 @@ def test_v018_rejects_invalid_wave_parameters() -> None:
     for bad in (1.0, -1.0, 2.5):
         with pytest.raises(ValueError):
             v018.v018_field(x, y, epsilon_w=bad)
+
+
+def _v019_components(x: np.ndarray, y: np.ndarray, phase: float = 0.0):
+    r1, r2 = v019.radial_fields(x, y)
+    anchored = v019.angular_fields(x, y)
+    theta1, theta2 = v019.phased_angles(*anchored, phase)
+    d1, d2 = v019.distorted_radii(r1, r2, *anchored, -0.30)
+    s1, s2 = v019.ring_components(d1, d2, theta1, theta2)
+    return s1, s2, theta1, theta2
+
+
+def test_v019_expression_is_finite() -> None:
+    x, y = v019.coordinate_grids(width=81, height=65)
+    field = v019.v019_field(x, y)
+    rgb = v019.v019_rgb(width=81, height=65)
+
+    assert field.shape == (65, 81)
+    assert np.isfinite(field).all()
+
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+
+
+def test_v019_ring_components_sum_to_the_ring_field() -> None:
+    x, y = v019.coordinate_grids(width=150, height=150)
+    s1, s2, theta1, theta2 = _v019_components(x, y)
+
+    r1, r2 = v019.radial_fields(x, y)
+    anchored = v019.angular_fields(x, y)
+    d1, d2 = v019.distorted_radii(r1, r2, *anchored, -0.30)
+
+    assert np.allclose(s1 + s2, v019.ring_field(d1, d2, theta1, theta2))
+    assert np.allclose(s1 + s2, v018.ring_field(d1, d2, theta1, theta2))
+
+
+def test_v019_matches_the_plain_angle_specification() -> None:
+    x, y = v019.coordinate_grids(width=151, height=151)
+    plain1, plain2 = v019.plain_angles(x, y)
+
+    for phase in (0.0, 0.8, 2.9):
+        s1, s2, theta1, theta2 = _v019_components(x, y, phase)
+        expected = s1 * np.cos(plain1 - phase) - s2 * np.cos(plain2 - phase)
+
+        assert np.allclose(v019.velocity_field(s1, s2, theta1, theta2), expected)
+
+
+def test_v019_velocity_is_signed_and_bounded_by_the_disks() -> None:
+    x, y = v019.coordinate_grids(width=401, height=401)
+    s1, s2, theta1, theta2 = _v019_components(x, y)
+
+    velocity = v019.velocity_field(s1, s2, theta1, theta2)
+
+    assert velocity.max() > 0.0
+    assert velocity.min() < 0.0
+    assert np.all(np.abs(velocity) <= s1 + s2 + 1.0e-12)
+
+
+def test_v019_approaching_between_the_holes_receding_outside() -> None:
+    x, y = v019.coordinate_grids(width=601, height=601)
+    s1, s2, theta1, theta2 = _v019_components(x, y)
+    velocity = v019.velocity_field(s1, s2, theta1, theta2)
+
+    row = int(np.argmin(np.abs(y[:, 0])))
+    between = np.abs(x[row]) < 0.25
+    outside = np.abs(x[row]) > 0.42
+
+    assert velocity[row][between].min() > 0.0
+    assert velocity[row][outside & (np.abs(x[row]) < 0.6)].max() < 0.0
+
+
+def test_v019_sign_change_is_a_smooth_crossing() -> None:
+    x, y = v019.coordinate_grids(width=600, height=600)
+    s1, s2, theta1, theta2 = _v019_components(x, y)
+    velocity = v019.velocity_field(s1, s2, theta1, theta2)
+
+    jumps = np.abs(np.diff(velocity, axis=1))
+    assert jumps.max() < 0.05 * np.abs(velocity).max()
+
+
+def test_v019_phase_rotates_the_approaching_side() -> None:
+    x, y = v019.coordinate_grids(width=301, height=301)
+
+    base = v019.velocity_field(*_v019_components(x, y, 0.0))
+    turned = v019.velocity_field(*_v019_components(x, y, np.pi))
+
+    assert not np.allclose(base, turned)
+    assert np.allclose(base, v019.velocity_field(*_v019_components(x, y, 2.0 * np.pi)))
+
+
+def test_v019_is_a_small_signed_perturbation() -> None:
+    x, y = v019.coordinate_grids(width=400, height=400)
+
+    base = v018.v018_field(x, y)
+    field = v019.v019_field(x, y)
+
+    assert np.all(field >= 0.0)
+
+    lit = base > 0.05
+    relative = (field - base)[lit] / base[lit]
+    assert relative.max() > 0.0 and relative.min() < 0.0
+    assert np.abs(relative).max() < 0.08
+
+
+def test_v019_reduces_to_v018_without_velocity() -> None:
+    x, y = v019.coordinate_grids(width=200, height=200)
+
+    assert np.allclose(v019.v019_field(x, y, lambda_v=0.0), v018.v018_field(x, y))
+    assert np.array_equal(v019.v019_rgb(120, 120, lambda_v=0.0), v018.v018_rgb(120, 120))
+
+
+def test_v019_signed_diagnostic_uses_both_colours() -> None:
+    rgb = v019.velocity_rgb(200, 200)
+
+    assert rgb.shape == (200, 200, 3)
+    assert rgb.dtype == np.uint8
+
+    warm = (rgb[..., 0] > rgb[..., 2] + 40).sum()
+    cool = (rgb[..., 2] > rgb[..., 0] + 40).sum()
+    assert warm > 0 and cool > 0
+
+
+def test_v019_keeps_the_silhouettes_solid() -> None:
+    x, y = v019.coordinate_grids(width=400, height=400)
+    r1, r2 = v019.radial_fields(x, y)
+    field = v019.v019_field(x, y)
+
+    margin = 6.0 * v019.grid_spacing(x, y)
+    inside = np.minimum(r1, r2) <= 0.14 - margin
+    assert inside.any()
+    assert field[inside].max() < 1.0e-2

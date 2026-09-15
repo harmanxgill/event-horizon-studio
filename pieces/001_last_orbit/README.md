@@ -930,7 +930,59 @@ python pieces/001_last_orbit/experiments/v018_quadrupolar_field.py --epsilon-w 0
 python pieces/001_last_orbit/experiments/v018_quadrupolar_field.py --gamma-w 0.3 --k-g 14
 ```
 
+### v019 - orbital velocity field
+
+A signed field marking which side of each disk is approaching and which is
+receding:
+
+```text
+V1 = cos(t1 - p),   V2 = -cos(t2 - p)
+V  = S1 V1 + S2 V2
+```
+
+Written against the plain angles the second term carries a minus sign; against
+the companion-anchored `theta2` it does not, because `theta2` already includes
+the `-pi`. Both reduce to `V = S1 cos(theta1~) + S2 cos(theta2~)`, where
+`theta~` is v011's phased angle. A test checks the implementation against the
+plain-angle form at three phases.
+
+`V` needs each hole's disk separately, so `ring_field` is split into
+`ring_components`, returning `(S1, S2)`; `ring_field` remains as their sum and
+is checked to agree with v018's.
+
+### Shape of the field
+
+`|V| <= S1 + S2` everywhere, so `V` lives only where the disks do. At `p = 0`
+it is positive between the holes, where each disk faces its companion, and
+negative on the outer flanks. Advancing `p` rotates the approaching side, with
+period `2 pi`.
+
+The sign change is a smooth crossing: the largest step between neighbouring
+pixels is `3%` of the peak. It can look like a hard edge in a linear rendering,
+because `V` spans about two orders of magnitude, from `1.68` at the midpoint to
+under `0.01` near the crossings. The signed diagnostic therefore scales on the
+90th percentile of `|V|` rather than the maximum.
+
+### How it enters the image
+
+The specification defines `V` without saying how to use it. v019 adds it as a
+small signed term, `+ L_v V` with `L_v = 0.08`, inside the quadrupole
+modulation and the horizon mask. That brightens the approaching side and dims
+the receding side by at most about `6%`, and nothing goes negative. `L_v = 0`
+reproduces v018 exactly.
+
+A signed approaching/receding field is the natural input for colour, blue on
+one side and red on the other, rather than for brightness. That is not done
+here, since the piece is still rendered through a single warm ramp, but
+`--velocity` renders the field itself that way:
+
+```bash
+python pieces/001_last_orbit/experiments/v019_velocity_field.py
+python pieces/001_last_orbit/experiments/v019_velocity_field.py --velocity
+python pieces/001_last_orbit/experiments/v019_velocity_field.py --lambda-v 0.3
+```
+
 Possible next versions:
 
-- v019: rotating the binary axis with the same phase
-- v020: separation shrinking as the orbit decays
+- v020: Doppler colour from the velocity field
+- v021: separation shrinking as the orbit decays
