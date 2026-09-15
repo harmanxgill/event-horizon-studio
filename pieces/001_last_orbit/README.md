@@ -1202,7 +1202,54 @@ python pieces/001_last_orbit/experiments/v022_rgb_equations.py --gamma-l 1.4 --c
 `--rate-b 2.5` lets the brightest light approach white again; the last command
 shows the washed-out, pinched version for comparison.
 
+### v023 - mathematical background
+
+No random stars. The empty space around the binary is a field too:
+
+```text
+B_bg = e_b exp(-g_b rho) [1 + n_b cos(k_b rho + m_b Theta)]
+L'   = L + B_bg
+```
+
+`rho` and `Theta` are v017's coordinates about the centre of the binary, so the
+background is an `m_b`-armed spiral fading slowly outward, with `m_b = 5`,
+`k_b = 12`, `g_b = 0.5` and `n_b = 0.5`. Five arms keeps it distinct from the
+two-armed quadrupole wave it sits under.
+
+### Barely there
+
+`e_b = 0.003`. Added to `L` and passed through the colour equations of v022,
+the background changes no channel of any pixel by more than `3` levels out of
+`255`. In the dark `16%` of the frame the typical change to red is `1` level,
+on a base of about `21`; in the bright core it is at most `1`. Because the
+colour equations are steepest near `L = 0` and flatten as they saturate, the
+same small addition shows most in the darkest regions and all but vanishes in
+the bright ones, which is where a background should live. It is invisible at a
+glance; a difference image multiplied by forty shows the five arms clearly.
+
+### Two choices in the construction
+
+`m_b` must be an integer. `Theta` jumps from `pi` to `-pi` across the negative
+`x` axis, and `cos(k_b rho + m_b Theta)` only agrees on both sides of that jump
+when `m_b` is whole. A half-integer would draw a straight seam there, the same
+failure as the tidal tails in v015, so a fractional `m_b` is rejected. At
+`m_b = 5` the step across the cut is `6e-5`, no larger than the change between
+neighbouring pixels.
+
+The background sits behind the holes. It is multiplied by the same horizon mask
+`(1 - S)` as everything else, so the two black disks stay black; even at a
+background a hundred times stronger than the default, the horizons stay below
+`0.01`.
+
+```bash
+python pieces/001_last_orbit/experiments/v023_mathematical_background.py
+python pieces/001_last_orbit/experiments/v023_mathematical_background.py --epsilon-b 0.03
+python pieces/001_last_orbit/experiments/v023_mathematical_background.py --epsilon-b 0
+```
+
+`--epsilon-b 0.03` makes the arms plainly visible, for checking what is there.
+
 Possible next versions:
 
-- v023: Doppler colour from the velocity field
-- v024: separation shrinking as the orbit decays
+- v024: Doppler colour from the velocity field
+- v025: separation shrinking as the orbit decays

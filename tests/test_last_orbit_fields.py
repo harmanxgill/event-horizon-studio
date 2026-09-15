@@ -217,6 +217,15 @@ assert v022_spec.loader is not None
 v022_spec.loader.exec_module(v022)
 
 
+v023_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v023",
+    PIECE_DIR / "experiments" / "v023_mathematical_background.py",
+)
+v023 = importlib.util.module_from_spec(v023_spec)
+assert v023_spec.loader is not None
+v023_spec.loader.exec_module(v023)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -2629,3 +2638,117 @@ def test_v022_rejects_invalid_colour_parameters() -> None:
     for kwargs in ({"rate_r": 0.0}, {"rate_b": -1.0}, {"shift_g": 1.0}, {"shift_b": -1.2}):
         with pytest.raises(ValueError):
             v022.colour_equations(level, **kwargs)
+
+
+def test_v023_render_is_well_formed() -> None:
+    x, y = v023.coordinate_grids(width=81, height=65)
+    field = v023.v023_field(x, y)
+    rgb = v023.v023_rgb(width=81, height=65)
+
+    assert field.shape == (65, 81)
+    assert np.isfinite(field).all()
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+
+
+def test_v023_background_matches_the_specification() -> None:
+    x, y = v023.coordinate_grids(width=151, height=151)
+    rho, theta = v023.global_polar(x, y)
+
+    for epsilon_b, gamma_b, eta_b, k_b, m_b in ((0.003, 0.5, 0.5, 12.0, 5), (0.01, 2.0, 1.0, 4.0, 3)):
+        expected = epsilon_b * np.exp(-gamma_b * rho) * (1.0 + eta_b * np.cos(k_b * rho + m_b * theta))
+        actual = v023.mathematical_background(
+            rho, theta, epsilon_b=epsilon_b, gamma_b=gamma_b, eta_b=eta_b, k_b=k_b, m_b=m_b
+        )
+        assert np.allclose(actual, expected)
+
+
+def test_v023_background_is_non_negative_and_bounded() -> None:
+    rho = np.linspace(0.0, 1.5, 3000)
+    theta = np.linspace(-np.pi, np.pi, 3000)
+
+    background = v023.mathematical_background(rho, theta)
+
+    assert background.min() >= 0.0
+    assert background.max() <= 0.003 * 1.5 + 1.0e-12
+
+
+def test_v023_integer_m_keeps_the_pattern_continuous_across_the_cut() -> None:
+    radius = np.full(2, 0.6)
+    across = np.array([np.pi - 1.0e-9, -np.pi + 1.0e-9])
+
+    continuous = v023.mathematical_background(radius, across, m_b=5)
+    assert np.isclose(continuous[0], continuous[1], atol=1.0e-9)
+
+    # the same check with a half-integer m, computed directly, shows the jump
+    jump = 0.003 * np.exp(-0.5 * 0.6) * 0.5 * np.cos(12.0 * 0.6 + 2.5 * across)
+    assert abs(jump[0] - jump[1]) > 1.0e-4
+
+    import pytest
+
+    with pytest.raises(ValueError):
+        v023.mathematical_background(radius, across, m_b=2.5)
+
+
+def test_v023_background_has_m_arms_at_every_radius() -> None:
+    theta = np.linspace(-np.pi, np.pi, 20000, endpoint=False)
+
+    for m_b in (3, 5):
+        for radius in (0.3, 0.9):
+            pattern = v023.mathematical_background(np.full_like(theta, radius), theta, m_b=m_b)
+            crests = (pattern > np.roll(pattern, 1)) & (pattern > np.roll(pattern, -1))
+            assert int(crests.sum()) == m_b
+
+
+def test_v023_reduces_to_v022_without_a_background() -> None:
+    x, y = v023.coordinate_grids(width=200, height=200)
+
+    assert np.allclose(v023.v023_field(x, y, epsilon_b=0.0), v022.v022_field(x, y))
+    assert np.array_equal(v023.v023_rgb(120, 120, epsilon_b=0.0), v022.v022_rgb(120, 120))
+
+
+def test_v023_background_is_only_visible_on_close_inspection() -> None:
+    new = v023.v023_rgb(600, 600).astype(int)
+    old = v022.v022_rgb(600, 600).astype(int)
+    difference = new - old
+
+    assert difference.min() >= 0
+    assert difference.max() <= 3
+    assert difference.max() >= 1
+
+    dark = old.max(axis=2) < 30
+    assert np.median(difference[..., 0][dark]) <= 1
+
+
+def test_v023_background_shows_mainly_in_the_dark() -> None:
+    x, y = v023.coordinate_grids(width=600, height=600)
+    rho, _ = v023.global_polar(x, y)
+
+    difference = (v023.v023_rgb(600, 600).astype(int) - v022.v022_rgb(600, 600).astype(int))[..., 0]
+
+    corner = (np.abs(x) > 0.85) & (np.abs(y) > 0.85)
+    core = rho < 0.1
+
+    assert difference[corner].mean() > difference[core].mean()
+
+
+def test_v023_horizons_hide_the_background() -> None:
+    x, y = v023.coordinate_grids(width=400, height=400)
+    r1, r2 = v023.radial_fields(x, y)
+
+    margin = 6.0 * v023.grid_spacing(x, y)
+    inside = np.minimum(r1, r2) <= 0.14 - margin
+    assert inside.any()
+
+    loud = v023.v023_field(x, y, epsilon_b=0.5)
+    assert loud[inside].max() < 1.0e-2
+
+
+def test_v023_rejects_invalid_background_parameters() -> None:
+    import pytest
+
+    rho = np.linspace(0.0, 1.0, 8)
+    theta = np.zeros(8)
+    for kwargs in ({"epsilon_b": -0.1}, {"gamma_b": -1.0}, {"eta_b": 1.5}, {"eta_b": -0.1}):
+        with pytest.raises(ValueError):
+            v023.mathematical_background(rho, theta, **kwargs)
