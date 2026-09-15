@@ -982,7 +982,70 @@ python pieces/001_last_orbit/experiments/v019_velocity_field.py --velocity
 python pieces/001_last_orbit/experiments/v019_velocity_field.py --lambda-v 0.3
 ```
 
+### v020 - Doppler-inspired luminosity
+
+v019's signed velocity becomes a brightness factor on each disk:
+
+```text
+D1 = (1 + B_d V1)^p_d,   D2 = (1 + B_d V2)^p_d
+S1' = D1 S1,             S2' = D2 S2
+```
+
+This is Doppler-*inspired*. The power-law form echoes how relativistic beaming
+brightens approaching material, but nothing here traces rays, transforms
+frequencies, or uses a physical velocity; `V` is a cosine of the phased angle
+and `B_d` is a free contrast parameter.
+
+The parameters are `beta_d` and `p_d` because `beta` and `exponent` already
+belong to v006's beaming inside the ring profile. The two effects are
+different: v006's is fixed along each hole's orbital direction and normalised
+to add no light, while this one follows the phased angle and is not normalised.
+
+The composition becomes
+
+```text
+G = (S1' + S2' + A_halo + L_t T' + L_q Q + L_p P) [1 + e_w W] (1 - S)
+```
+
+which is the written `F20` with v004's halo, v018's quadrupole modulation and
+v003's horizon mask kept from earlier versions. v019's additive `L_v V` term is
+gone, since `D` now carries the velocity: `B_d = 0` or `p_d = 0` gives back v018
+exactly, not v019.
+
+### Numbers
+
+`|V_i| <= 1` and `B_d < 1`, so `1 + B_d V` is always positive and the factor
+never flips sign. At the defaults `B_d = 0.3`, `p_d = 3`:
+
+```text
+approaching  (1.3)^3 = 2.20
+receding     (0.7)^3 = 0.34     contrast 6.4x
+```
+
+Unlike the angular profile of v007 this is not brightness-neutral. Averaged
+around a turn, the odd powers of `cos` vanish and
+
+```text
+<(1 + B cos t)^3> = 1 + 1.5 B^2
+```
+
+so the disks gain `13.5%` of their light at `B_d = 0.3`, and `37.5%` at `0.5`.
+
+At `p = 0` the approaching side is the side facing the companion, so the
+boost lands on material that already feeds the bridge. The peak field rises
+from `4.03` to `6.22` and clipping from `8.4%` to `9.6%`, which is why the
+centre of the frame now reads as one hot region. Advancing `--phase-degrees`
+moves the approaching side off the bridge.
+
+Render it, sharpen the contrast, or turn it off:
+
+```bash
+python pieces/001_last_orbit/experiments/v020_doppler_luminosity.py
+python pieces/001_last_orbit/experiments/v020_doppler_luminosity.py --phase-degrees 90
+python pieces/001_last_orbit/experiments/v020_doppler_luminosity.py --beta-d 0
+```
+
 Possible next versions:
 
-- v020: Doppler colour from the velocity field
-- v021: separation shrinking as the orbit decays
+- v021: Doppler colour from the velocity field
+- v022: separation shrinking as the orbit decays

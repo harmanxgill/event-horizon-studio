@@ -190,6 +190,15 @@ assert v019_spec.loader is not None
 v019_spec.loader.exec_module(v019)
 
 
+v020_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v020",
+    PIECE_DIR / "experiments" / "v020_doppler_luminosity.py",
+)
+v020 = importlib.util.module_from_spec(v020_spec)
+assert v020_spec.loader is not None
+v020_spec.loader.exec_module(v020)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -2177,3 +2186,116 @@ def test_v019_keeps_the_silhouettes_solid() -> None:
     inside = np.minimum(r1, r2) <= 0.14 - margin
     assert inside.any()
     assert field[inside].max() < 1.0e-2
+
+
+def test_v020_expression_is_finite() -> None:
+    x, y = v020.coordinate_grids(width=81, height=65)
+    field = v020.v020_field(x, y)
+    rgb = v020.v020_rgb(width=81, height=65)
+
+    assert field.shape == (65, 81)
+    assert np.isfinite(field).all()
+
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+
+
+def test_v020_factor_matches_the_specification() -> None:
+    velocity = np.linspace(-1.0, 1.0, 513)
+
+    for beta_d, p_d in ((0.3, 3.0), (0.5, 2.0), (0.0, 4.0)):
+        assert np.allclose(
+            v020.doppler_factor_inspired(velocity, beta_d, p_d),
+            (1.0 + beta_d * velocity) ** p_d,
+        )
+
+
+def test_v020_disks_are_scaled_by_the_plain_angle_factors() -> None:
+    x, y = v020.coordinate_grids(width=151, height=151)
+    r1, r2 = v020.radial_fields(x, y)
+    anchored = v020.angular_fields(x, y)
+    plain1, plain2 = v020.plain_angles(x, y)
+
+    for phase in (0.0, 1.2):
+        theta1, theta2 = v020.phased_angles(*anchored, phase)
+        d1, d2 = v020.distorted_radii(r1, r2, *anchored, -0.30)
+        s1, s2 = v020.ring_components(d1, d2, theta1, theta2)
+
+        v1 = np.cos(plain1 - phase)
+        v2 = -np.cos(plain2 - phase)
+        expected = (1.0 + 0.3 * v1) ** 3 * s1 + (1.0 + 0.3 * v2) ** 3 * s2
+
+        actual = (
+            v020.doppler_factor_inspired(np.cos(theta1)) * s1
+            + v020.doppler_factor_inspired(np.cos(theta2)) * s2
+        )
+        assert np.allclose(actual, expected)
+
+
+def test_v020_factor_is_positive_and_monotone_in_velocity() -> None:
+    velocity = np.linspace(-1.0, 1.0, 1001)
+
+    for beta_d in (0.1, 0.3, 0.9):
+        factor = v020.doppler_factor_inspired(velocity, beta_d, 3.0)
+        assert np.all(factor > 0.0)
+        assert np.all(np.diff(factor) > 0.0)
+        assert np.isclose(factor[500], 1.0)
+
+
+def test_v020_mean_brightening_matches_the_closed_form() -> None:
+    theta = np.linspace(-np.pi, np.pi, 8192, endpoint=False)
+
+    for beta_d in (0.1, 0.3, 0.5):
+        factor = v020.doppler_factor_inspired(np.cos(theta), beta_d, 3.0)
+        assert np.isclose(factor.mean(), 1.0 + 1.5 * beta_d**2, rtol=1.0e-9)
+
+
+def test_v020_approaching_side_outshines_the_receding_side() -> None:
+    velocity = np.array([1.0, -1.0])
+    factor = v020.doppler_factor_inspired(velocity)
+
+    assert np.isclose(factor[0] / factor[1], (1.3 / 0.7) ** 3)
+    assert factor[0] / factor[1] > 6.0
+
+
+def test_v020_replaces_the_additive_velocity_term() -> None:
+    x, y = v020.coordinate_grids(width=200, height=200)
+
+    for kwargs in ({"beta_d": 0.0}, {"p_d": 0.0}):
+        assert np.allclose(v020.v020_field(x, y, **kwargs), v018.v018_field(x, y))
+    assert not np.allclose(v020.v020_field(x, y, beta_d=0.0), v019.v019_field(x, y))
+
+
+def test_v020_leaves_bridge_tails_and_potential_untouched() -> None:
+    x, y = v020.coordinate_grids(width=200, height=200)
+
+    difference = v020.v020_field(x, y) - v018.v018_field(x, y)
+    r1, r2 = v020.radial_fields(x, y)
+
+    far_from_disks = np.minimum(r1, r2) > 0.75
+    assert far_from_disks.any()
+    assert np.abs(difference[far_from_disks]).max() < 1.0e-3
+
+
+def test_v020_keeps_the_silhouettes_solid() -> None:
+    x, y = v020.coordinate_grids(width=400, height=400)
+    r1, r2 = v020.radial_fields(x, y)
+    field = v020.v020_field(x, y)
+
+    assert np.all(field >= 0.0)
+
+    margin = 6.0 * v020.grid_spacing(x, y)
+    inside = np.minimum(r1, r2) <= 0.14 - margin
+    assert inside.any()
+    assert field[inside].max() < 1.0e-2
+
+
+def test_v020_rejects_invalid_doppler_parameters() -> None:
+    import pytest
+
+    velocity = np.zeros(4)
+    for bad in (-0.1, 1.0, 1.5):
+        with pytest.raises(ValueError):
+            v020.doppler_factor_inspired(velocity, beta_d=bad)
+    with pytest.raises(ValueError):
+        v020.doppler_factor_inspired(velocity, p_d=-1.0)
