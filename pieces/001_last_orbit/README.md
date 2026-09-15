@@ -1308,7 +1308,68 @@ python pieces/001_last_orbit/experiments/v024_fine_structure.py --c-n 20 --m-n 1
 python pieces/001_last_orbit/experiments/v024_fine_structure.py --epsilon-n 0
 ```
 
+### v025 - horizon suppression
+
+The horizons are revisited last, and applied last:
+
+```text
+H_i = 1 / (1 + exp(-k_h (r_i - r_h)))
+H   = H1 H2
+L_final = H L'
+```
+
+`H_i` rises from `0` inside a horizon to `1` outside it, reaching exactly `1/2`
+at `r_i = r_h`, and the product is dark wherever either hole is.
+
+### Same shape, new place
+
+Since v003 the horizons have been cut out with `1 - max(S1, S2)`, where `S_i`
+is a logistic. That is the same function as `H1 H2` whenever the two horizons do
+not overlap, and at a separation of `0.72` against a radius of `0.14` they are
+far apart: the two agree everywhere to `2e-16`. What v025 changes is not the
+shape of the mask but where in the pipeline it acts.
+
+Before, the mask multiplied the raw intensity, and the result then went through
+the compression `1 - exp(-g F)` of v021 and had the background of v023 added.
+The visible edge was therefore a logistic bent by a nonlinear curve, with the
+background masked separately. Now `L'` is built in full, background included,
+and multiplied by `H` once at the very end. The edge that reaches the colour
+equations is exactly the logistic above, which is what makes `k_h` a direct
+control over it.
+
+Nothing inside the horizons survives. `L'` there is not small, `0.161` at a
+hole's centre, since the disks, potential and fine structure are all defined
+at small radius, but `H` is below `1e-20` at the centre and the rendered disks
+stay at most one level above black. The exponent is clipped like v003's, so
+even `k_h = 1e6` evaluates without overflow.
+
+### The edge is now measured in space, not pixels
+
+The logistic's `10%` to `90%` transition spans `ln 81 / k_h` in coordinate
+units. v003 instead tied its edge to the pixel spacing, so it looked the same at
+every render size. `k_h` is a length scale in the plane, so the edge in pixels
+now depends on resolution:
+
+```text
+k_h = 600    1200 px: 4.4 px    512 px: 1.9 px
+k_h = 300    1200 px: 8.8 px    512 px: 3.7 px
+k_h = 150    1200 px: 17.6 px   512 px: 7.5 px
+```
+
+The default `k_h = 600` reproduces v003's `4.4` pixel edge exactly at the
+standard `1200x1200` size, so the full-size render keeps the edge it had. At
+smaller sizes the edge is sharper in pixels than before. Away from the edge
+nothing changes: beyond `r = 0.2` no pixel differs from v024 by a single level,
+and the intensity differs only in the band `0.13 < r < 0.16`, by at most `0.02`.
+Lower `k_h` gives a visibly soft, glowing rim.
+
+```bash
+python pieces/001_last_orbit/experiments/v025_horizon_suppression.py
+python pieces/001_last_orbit/experiments/v025_horizon_suppression.py --k-h 80
+python pieces/001_last_orbit/experiments/v025_horizon_suppression.py --k-h 60000
+```
+
 Possible next versions:
 
-- v025: Doppler colour from the velocity field
-- v026: separation shrinking as the orbit decays
+- v026: Doppler colour from the velocity field
+- v027: separation shrinking as the orbit decays

@@ -235,6 +235,15 @@ assert v024_spec.loader is not None
 v024_spec.loader.exec_module(v024)
 
 
+v025_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v025",
+    PIECE_DIR / "experiments" / "v025_horizon_suppression.py",
+)
+v025 = importlib.util.module_from_spec(v025_spec)
+assert v025_spec.loader is not None
+v025_spec.loader.exec_module(v025)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -2908,3 +2917,135 @@ def test_v024_rejects_invalid_structure_parameters() -> None:
     for kwargs in ({"structure": "noise"}, {"epsilon_n": 1.5}, {"epsilon_n": -0.1}, {"soft_n": 0.0}):
         with pytest.raises(ValueError):
             v024.fine_structure(r, theta, **kwargs)
+
+
+def test_v025_render_is_well_formed() -> None:
+    x, y = v025.coordinate_grids(width=81, height=65)
+    field = v025.v025_field(x, y)
+    rgb = v025.v025_rgb(width=81, height=65)
+
+    assert field.shape == (65, 81)
+    assert np.isfinite(field).all()
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+
+
+def test_v025_suppression_matches_the_specification() -> None:
+    r1 = np.linspace(0.10, 0.20, 401)
+    r2 = np.linspace(0.30, 0.13, 401)
+
+    for k_h in (80.0, 300.0, 600.0):
+        h1 = 1.0 / (1.0 + np.exp(-k_h * (r1 - 0.14)))
+        h2 = 1.0 / (1.0 + np.exp(-k_h * (r2 - 0.14)))
+        assert np.allclose(v025.horizon_suppression(r1, r2, k_h=k_h), h1 * h2)
+
+
+def test_v025_product_equals_the_old_silhouette_complement() -> None:
+    from event_horizon.fields import soft_horizon
+
+    x, y = v025.coordinate_grids(width=600, height=600)
+    r1, r2 = v025.radial_fields(x, y)
+
+    for k_h in (150.0, 600.0):
+        edge = 1.0 / k_h
+        old = 1.0 - np.maximum(soft_horizon(r1, 0.14, edge), soft_horizon(r2, 0.14, edge))
+        assert np.allclose(v025.horizon_suppression(r1, r2, k_h=k_h), old, atol=1.0e-12)
+
+
+def test_v025_suppression_limits() -> None:
+    k_h = 600.0
+    radius = np.array([0.0, 0.14, 0.5])
+    far = np.full(3, 2.0)
+
+    h = v025.horizon_suppression(radius, far, k_h=k_h)
+    assert h[0] < 1.0e-20
+    assert np.isclose(h[1], 0.5)
+    assert np.isclose(h[2], 1.0)
+
+
+def test_v025_large_k_approaches_a_sharp_boundary() -> None:
+    inside = np.array([0.14 - 1.0e-3])
+    outside = np.array([0.14 + 1.0e-3])
+    far = np.array([2.0])
+
+    for k_h, tolerance in ((600.0, 0.4), (60000.0, 1.0e-12)):
+        assert v025.horizon_suppression(inside, far, k_h=k_h)[0] < tolerance
+        assert v025.horizon_suppression(outside, far, k_h=k_h)[0] > 1.0 - tolerance
+
+
+def test_v025_sharp_k_does_not_overflow() -> None:
+    import warnings
+
+    r = np.linspace(0.0, 2.0, 64)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        values = v025.horizon_suppression(r, r, k_h=1.0e6)
+    assert np.isfinite(values).all()
+
+
+def test_v025_edge_width_is_controlled_by_k() -> None:
+    r = np.linspace(0.0, 0.3, 300001)
+    far = np.full_like(r, 2.0)
+
+    def width(k_h: float) -> float:
+        h = v025.horizon_suppression(r, far, k_h=k_h)
+        return float(r[np.argmax(h >= 0.9)] - r[np.argmax(h >= 0.1)])
+
+    for k_h in (80.0, 300.0, 600.0):
+        assert np.isclose(width(k_h), np.log(81.0) / k_h, rtol=1.0e-3)
+    assert np.isclose(width(150.0) / width(600.0), 4.0, rtol=1.0e-2)
+
+
+def test_v025_default_edge_matches_v003_at_full_size_but_not_smaller() -> None:
+    edge_units = np.log(81.0) / 600.0
+
+    for n, expected_pixels in ((1200, 4.4), (512, 1.9)):
+        x, y = v025.coordinate_grids(width=n, height=n)
+        assert np.isclose(edge_units / v025.grid_spacing(x, y), expected_pixels, atol=0.1)
+
+
+def test_v025_only_the_horizon_edge_changes_from_v024() -> None:
+    x, y = v025.coordinate_grids(width=600, height=600)
+    r1, r2 = v025.radial_fields(x, y)
+    nearest = np.minimum(r1, r2)
+
+    before = v024.v024_field(x, y)
+    after = v025.v025_field(x, y)
+
+    assert np.allclose(after[nearest > 0.20], before[nearest > 0.20], atol=1.0e-12)
+    assert np.abs(after - before)[(nearest > 0.12) & (nearest < 0.17)].max() > 1.0e-3
+
+    far = nearest > 0.20
+    rgb_difference = np.abs(v025.v025_rgb(600, 600).astype(int) - v024.v024_rgb(600, 600).astype(int))
+    assert rgb_difference[far].max() == 0
+
+
+def test_v025_suppression_is_applied_last() -> None:
+    x, y = v025.coordinate_grids(width=300, height=300)
+    r1, r2 = v025.radial_fields(x, y)
+
+    for k_h in (80.0, 600.0):
+        suppression = v025.horizon_suppression(r1, r2, k_h=k_h)
+        unmasked = v025.v025_field(x, y, k_h=1.0e-9) / v025.horizon_suppression(r1, r2, k_h=1.0e-9)
+        assert np.allclose(v025.v025_field(x, y, k_h=k_h), suppression * unmasked, atol=1.0e-9)
+
+
+def test_v025_keeps_the_horizons_black() -> None:
+    x, y = v025.coordinate_grids(width=400, height=400)
+    r1, r2 = v025.radial_fields(x, y)
+
+    margin = 6.0 * v025.grid_spacing(x, y)
+    inside = np.minimum(r1, r2) <= 0.14 - margin
+    assert inside.any()
+
+    assert v025.v025_field(x, y)[inside].max() < 1.0e-2
+    assert v025.v025_rgb(400, 400)[inside].max() <= 10
+
+
+def test_v025_rejects_invalid_suppression_parameters() -> None:
+    import pytest
+
+    r = np.linspace(0.1, 1.0, 8)
+    for kwargs in ({"k_h": 0.0}, {"k_h": -5.0}, {"horizon_radius": 0.0}):
+        with pytest.raises(ValueError):
+            v025.horizon_suppression(r, r, **kwargs)
