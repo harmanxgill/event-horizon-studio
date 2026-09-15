@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -242,6 +243,33 @@ v025_spec = importlib.util.spec_from_file_location(
 v025 = importlib.util.module_from_spec(v025_spec)
 assert v025_spec.loader is not None
 v025_spec.loader.exec_module(v025)
+
+
+v026_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v026",
+    PIECE_DIR / "experiments" / "v026_final_equation.py",
+)
+v026 = importlib.util.module_from_spec(v026_spec)
+assert v026_spec.loader is not None
+v026_spec.loader.exec_module(v026)
+
+
+v027_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v027",
+    PIECE_DIR / "experiments" / "v027_horizon_lensing.py",
+)
+v027 = importlib.util.module_from_spec(v027_spec)
+assert v027_spec.loader is not None
+v027_spec.loader.exec_module(v027)
+
+
+v028_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v028",
+    PIECE_DIR / "experiments" / "v028_evolving_ripples.py",
+)
+v028 = importlib.util.module_from_spec(v028_spec)
+assert v028_spec.loader is not None
+v028_spec.loader.exec_module(v028)
 
 
 def test_field_dimensions_and_finite_values() -> None:
@@ -3049,3 +3077,404 @@ def test_v025_rejects_invalid_suppression_parameters() -> None:
     for kwargs in ({"k_h": 0.0}, {"k_h": -5.0}, {"horizon_radius": 0.0}):
         with pytest.raises(ValueError):
             v025.horizon_suppression(r, r, **kwargs)
+
+
+V026_DELETED = {"epsilon_w": 0.0, "anisotropy": 0.0, "epsilon_b": 0.0, "tone": "linear"}
+
+
+def _v026_reference(x: np.ndarray, y: np.ndarray, **parameters) -> np.ndarray:
+    return 1.0 - np.exp(-0.25 * v025.v025_field(x, y, **V026_DELETED, **parameters))
+
+
+def test_v026_render_is_well_formed() -> None:
+    x, y = v026.coordinate_grids(width=81, height=65)
+    level = v026.v026_field(x, y)
+    rgb = v026.v026_rgb(width=81, height=65)
+
+    assert level.shape == (65, 81)
+    assert np.isfinite(level).all()
+    assert level.min() >= 0.0 and level.max() < 1.0
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+
+
+def test_v026_is_v025_with_the_deleted_terms_switched_off() -> None:
+    x, y = v026.coordinate_grids(width=240, height=240)
+
+    for parameters in ({}, {"phase": 1.1}, {"pitch": 0.6, "distortion": 0.0, "strength": 0.4}):
+        reference = _v026_reference(x, y, **parameters)
+        assert np.array_equal(v026.v026_field(x, y, **parameters), reference)
+
+    reference_pixels = v025.to_pixels(v025.colour_equations(_v026_reference(x, y), 0.0))
+    assert np.array_equal(v026.v026_rgb(240, 240), reference_pixels)
+
+
+def test_v026_deleted_terms_are_gone_from_the_code() -> None:
+    for name in (
+        "mathematical_background",
+        "quadrupole_wave",
+        "outgoing_wave",
+        "global_polar",
+        "angular_weight",
+        "compress_intensity",
+        "tone_rgb",
+        "velocity_rgb",
+        "velocity_field",
+        "silhouette_field",
+        "ring_field",
+    ):
+        assert not hasattr(v026, name), name
+
+    import inspect
+
+    assert set(inspect.signature(v026.doppler_factor_inspired).parameters) == {"velocity", "beta_d", "p_d"}
+    assert set(inspect.signature(v026.colour_equations).parameters) == {"level", "rate_r", "rate_g", "rate_b"}
+    for removed in ("epsilon_w", "anisotropy", "epsilon_b", "core_w", "shift_g", "tone", "structure"):
+        assert removed not in inspect.signature(v026.v026_field).parameters
+
+
+def test_v026_deletions_are_not_visible() -> None:
+    full = v025.v025_rgb(600, 600).astype(int)
+    pruned = v026.v026_rgb(600, 600).astype(int)
+
+    difference = np.abs(full - pruned).max(axis=2)
+    assert difference.mean() < 3.5
+    assert np.percentile(difference, 99) <= 20
+
+
+def test_v026_every_surviving_term_still_matters() -> None:
+    base = v026.v026_rgb(400, 400).astype(int)
+
+    for switch in (
+        {"glow": 0.0},
+        {"beta": 0.0},
+        {"harmonic": 0.0},
+        {"pitch": 0.5 * np.pi},
+        {"decay": 0.0},
+        {"distortion": 0.0},
+        {"strength": 0.0},
+        {"tails": 0.0},
+        {"lambda_p": 0.0},
+        {"beta_d": 0.0},
+        {"epsilon_n": 0.0},
+    ):
+        difference = np.abs(v026.v026_rgb(400, 400, **switch).astype(int) - base).max(axis=2)
+        assert np.percentile(difference, 99) >= 10, switch
+
+
+def test_v026_cli_defaults_match_the_equation() -> None:
+    import inspect
+    import sys
+
+    defaults = {
+        name: parameter.default
+        for function in (v026.v026_field, v026.v026_rgb)
+        for name, parameter in inspect.signature(function).parameters.items()
+        if parameter.default is not inspect.Parameter.empty
+    }
+
+    saved = sys.argv
+    sys.argv = ["v026"]
+    try:
+        options = vars(v026.parse_args())
+    finally:
+        sys.argv = saved
+
+    for name, default in defaults.items():
+        if name in options:
+            assert options[name] == default, name
+    extras = set(options) - set(defaults) - {"width", "height", "output", "series", "pitch_degrees", "phase_degrees"}
+    assert not extras
+
+
+def test_v026_keeps_the_horizons_black() -> None:
+    x, y = v026.coordinate_grids(width=400, height=400)
+    r1, r2 = v026.radial_fields(x, y)
+    spacing = 2.0 / 399.0
+
+    inside = np.minimum(r1, r2) <= 0.14 - 6.0 * spacing
+    assert inside.any()
+    assert v026.v026_field(x, y)[inside].max() < 1.0e-2
+    assert v026.v026_rgb(400, 400)[inside].max() <= 10
+
+
+def test_v026_phase_series_tiles_four_renders() -> None:
+    series = v026.phase_series(40, 30, gap=4)
+
+    assert series.shape == (64, 84, 3)
+    assert np.array_equal(series[:30, :40], v026.v026_rgb(40, 30, phase=0.0))
+
+
+def test_v026_rejects_invalid_parameters() -> None:
+    import pytest
+
+    x, y = v026.coordinate_grids(width=16, height=16)
+    with pytest.raises(ValueError):
+        v026.v026_field(x, y, gamma_l=0.0)
+    with pytest.raises(ValueError):
+        v026.colour_equations(np.zeros((2, 2)), rate_b=0.0)
+    with pytest.raises(ValueError):
+        v026.fine_structure(np.full(2, 0.3), np.zeros(2), m_n=23.5)
+
+
+def test_v027_render_is_well_formed() -> None:
+    x, y = v027.coordinate_grids(width=81, height=65)
+    level = v027.v027_field(x, y)
+    rgb = v027.v027_rgb(width=81, height=65)
+
+    assert level.shape == (65, 81)
+    assert np.isfinite(level).all()
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+
+
+def test_v027_reduces_to_v026_without_lensing() -> None:
+    x, y = v027.coordinate_grids(width=240, height=240)
+
+    for parameters in ({}, {"phase": 1.1}, {"pitch": 0.6, "strength": 0.4}):
+        assert np.array_equal(
+            v027.v027_field(x, y, einstein_radius=0.0, **parameters), v026.v026_field(x, y, **parameters)
+        )
+    assert np.array_equal(v027.v027_rgb(240, 240, einstein_radius=0.0), v026.v026_rgb(240, 240))
+
+
+def test_v027_lens_is_the_softened_binary_point_lens() -> None:
+    x, y = v027.coordinate_grids(width=121, height=121)
+    r_e, soft = 0.12, 0.02
+
+    expected_x, expected_y = x.copy(), y.copy()
+    for cx, cy in v027.black_hole_centers():
+        dx, dy = x - cx, y - cy
+        denominator = dx**2 + dy**2 + soft**2
+        expected_x = expected_x - r_e**2 * dx / denominator
+        expected_y = expected_y - r_e**2 * dy / denominator
+
+    lensed_x, lensed_y, _ = v027.binary_lens(x, y, einstein_radius=r_e, soft=soft)
+    assert np.allclose(lensed_x, expected_x)
+    assert np.allclose(lensed_y, expected_y)
+
+
+def test_v027_analytic_jacobian_matches_finite_differences() -> None:
+    n = 1200
+    x, y = v027.coordinate_grids(width=n, height=n)
+    h = 2.0 / (n - 1)
+    r1, r2 = v027.radial_fields(x, y)
+    visible = np.minimum(r1, r2) > 0.14 + 3.0 * h
+
+    lensed_x, lensed_y, determinant = v027.binary_lens(x, y)
+    dxy, dxx = np.gradient(lensed_x, -h, h)
+    dyy, dyx = np.gradient(lensed_y, -h, h)
+    numeric = dxx * dyy - dxy * dyx
+
+    assert np.abs(determinant - numeric)[visible].max() < 1.0e-3
+
+
+def test_v027_magnification_is_inverse_determinant_to_a_power() -> None:
+    determinant = np.array([1.0, 0.5, 0.25, 0.05, -3.0])
+
+    boost = v027.lens_magnification(determinant, magnification=1.5, det_floor=0.2)
+    expected = (1.0 / np.maximum(np.abs(determinant), 0.2)) ** 1.5
+    assert np.allclose(boost, expected)
+    assert boost[0] == 1.0
+    assert boost[3] == boost[3]  # clamped rather than infinite
+    assert np.all(np.isfinite(boost))
+    assert np.allclose(v027.lens_magnification(determinant, magnification=0.0), 1.0)
+
+
+def test_v027_default_lens_never_folds_outside_the_horizons() -> None:
+    n = 600
+    x, y = v027.coordinate_grids(width=n, height=n)
+    r1, r2 = v027.radial_fields(x, y)
+    visible = np.minimum(r1, r2) > 0.14 + 3.0 * (2.0 / (n - 1))
+
+    _, _, safe = v027.binary_lens(x, y, einstein_radius=0.12)
+    _, _, folded = v027.binary_lens(x, y, einstein_radius=0.16)
+
+    assert safe[visible].min() > 0.4
+    assert folded[visible].min() < 0.0
+
+
+def test_v027_magnification_intensifies_the_rim_and_the_warp_alone_does_not() -> None:
+    x, y = v027.coordinate_grids(width=600, height=600)
+    r1, r2 = v027.radial_fields(x, y)
+    nearest = np.minimum(r1, r2)
+    rim = (nearest > 0.14) & (nearest < 0.19)
+
+    before = v026.v026_field(x, y)[rim].mean()
+    warped_only = v027.v027_field(x, y, magnification=0.0)[rim].mean()
+    lensed = v027.v027_field(x, y)[rim].mean()
+
+    assert warped_only < before
+    assert lensed > 1.2 * before
+
+
+def test_v027_renders_in_strips_identically() -> None:
+    n, rows = 301, 37
+    xs = np.linspace(-1.0, 1.0, n)
+    ys = np.linspace(1.0, -1.0, n)
+    tiled = np.empty((n, n, 3), dtype=np.uint8)
+    for start in range(0, n, rows):
+        x, y = np.meshgrid(xs, ys[start : start + rows])
+        tiled[start : start + rows] = v027.to_pixels(v027.colour_equations(v027.v027_field(x, y)))
+
+    assert np.array_equal(tiled, v027.v027_rgb(n, n))
+
+
+def test_v027_crowding_does_not_alias_at_small_sizes() -> None:
+    n = 512
+    x, y = v027.coordinate_grids(width=n, height=n)
+    h = 2.0 / (n - 1)
+    true1, true2 = v027.radial_fields(x, y)
+
+    lx, ly, _ = v027.binary_lens(x, y)
+    r1, r2 = v027.radial_fields(lx, ly)
+    t1, t2 = v027.angular_fields(lx, ly)
+    d1, d2 = v027.distorted_radii(r1, r2, t1, t2, -0.30)
+    phase1, _ = v027.phased_angles(t1, t2, 0.0)
+    s1, _ = v027.ring_components(d1, d2, phase1, phase1)
+
+    psi = 90.0 * d1 + 24 * phase1 + 6.0 * np.log(d1 + 0.02)
+    gy_c, gx_c = np.gradient(np.cos(psi), h)
+    gy_s, gx_s = np.gradient(np.sin(psi), h)
+    gradient = np.hypot(np.cos(psi) * gx_s - np.sin(psi) * gx_c, np.cos(psi) * gy_s - np.sin(psi) * gy_c)
+    lit = (np.minimum(true1, true2) > 0.14 + 3.0 * h) & (s1 > 0.02)
+
+    assert np.percentile((2.0 * np.pi / (np.maximum(gradient, 1.0e-9) * h))[lit], 0.5) > 4.0
+
+
+def test_v027_keeps_the_horizons_black() -> None:
+    n = 400
+    x, y = v027.coordinate_grids(width=n, height=n)
+    r1, r2 = v027.radial_fields(x, y)
+    inside = np.minimum(r1, r2) <= 0.14 - 6.0 * (2.0 / (n - 1))
+    assert inside.any()
+
+    assert v027.v027_field(x, y)[inside].max() < 1.0e-2
+    assert v027.v027_rgb(n, n)[inside].max() <= 10
+
+
+def test_v027_rejects_invalid_lens_parameters() -> None:
+    import pytest
+
+    x, y = v027.coordinate_grids(width=8, height=8)
+    with pytest.raises(ValueError):
+        v027.binary_lens(x, y, einstein_radius=-0.1)
+    with pytest.raises(ValueError):
+        v027.binary_lens(x, y, soft=0.0)
+    for kwargs in ({"magnification": -1.0}, {"det_floor": 0.0}):
+        with pytest.raises(ValueError):
+            v027.lens_magnification(np.ones(3), **kwargs)
+
+
+V028_OFF = {"kappa_n": 0.0, "lambda_n": 0.0, "zeta_n": 0.0}
+
+
+def test_v028_render_is_well_formed() -> None:
+    x, y = v028.coordinate_grids(width=81, height=65)
+    level = v028.v028_field(x, y)
+    rgb = v028.v028_rgb(width=81, height=65)
+    assert level.shape == (65, 81)
+    assert np.all(np.isfinite(level))
+    assert np.all((level >= 0.0) & (level <= 1.0))
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+
+
+def test_v028_reduces_to_v027_with_ripples_frozen() -> None:
+    x, y = v028.coordinate_grids(width=240, height=240)
+    for parameters in ({}, {"phase": 1.1}):
+        assert np.array_equal(
+            v028.v028_field(x, y, **V028_OFF, **parameters), v027.v027_field(x, y, **parameters)
+        )
+    assert np.array_equal(v028.v028_rgb(240, 240, **V028_OFF), v027.v027_rgb(240, 240))
+
+
+def test_v028_chirp_keeps_ring_spacing_and_tightens_inside() -> None:
+    r = np.linspace(0.02, 0.9, 2001)
+    h = r[1] - r[0]
+    slope = np.gradient(v028.chirped_radius(r, kappa_n=10.0, reference=0.25), h)
+    expected = (1.0 + 10.0 * 0.25) / (1.0 + 10.0 * r)
+    assert np.allclose(slope[1:-1], expected[1:-1], rtol=1e-4)
+    ring = np.argmin(np.abs(r - 0.25))
+    assert abs(slope[ring] - 1.0) < 1e-3
+    assert np.all(np.diff(slope[1:-1]) < 0.0)
+    assert np.array_equal(v028.chirped_radius(r, kappa_n=0.0), r)
+
+
+def test_v028_amplitude_is_unchanged_at_ring_capped_inside_and_fades_outside() -> None:
+    r = np.linspace(0.0, 1.0, 1001)
+    amplitude = v028.ripple_amplitude(r, epsilon_n=0.35, lambda_n=8.0, reference=0.25)
+    assert np.isclose(v028.ripple_amplitude(np.array(0.25), 0.35, 8.0, 0.25), 0.35)
+    assert amplitude.max() == 1.0
+    assert np.all(np.diff(amplitude) <= 0.0)
+    assert amplitude[r >= 0.45].max() < 0.35 * np.exp(-8.0 * 0.2) + 1e-12
+    assert v028.ripple_amplitude(r, 0.35, 0.0) == 0.35
+
+
+def test_v028_tidal_warp_faces_the_companion_and_grows_with_r_squared() -> None:
+    theta = np.linspace(-np.pi, np.pi, 721)
+    r = np.full_like(theta, 0.25)
+    warp = v028.tidal_warp(r, theta, zeta_n=3.0, reference=0.25)
+    assert np.isclose(warp[np.argmin(np.abs(theta))], 3.0)
+    assert np.isclose(warp[np.argmin(np.abs(theta - 0.5 * np.pi))], -3.0)
+    assert np.allclose(warp, v028.tidal_warp(r, v028.wrap_angle(theta + np.pi), 3.0, 0.25))
+    assert np.allclose(v028.tidal_warp(2.0 * r, theta, 3.0, 0.25), 4.0 * warp)
+    assert v028.tidal_warp(r, theta, zeta_n=0.0) == 0.0
+
+
+def test_v028_tidal_warp_does_not_rotate_with_the_orbit(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen = []
+    original = v028.tidal_warp
+
+    def spy(r, anchored_theta, zeta_n=0.0, reference=0.25):
+        seen.append(anchored_theta.copy())
+        return original(r, anchored_theta, zeta_n, reference)
+
+    monkeypatch.setattr(v028, "tidal_warp", spy)
+    x, y = v028.coordinate_grids(width=41, height=41)
+    v028.v028_field(x, y, phase=0.0)
+    still = seen[:]
+    seen.clear()
+    v028.v028_field(x, y, phase=1.3)
+    for before, after in zip(still, seen):
+        assert np.array_equal(before, after)
+
+
+def test_v028_strip_rendering_is_bit_identical() -> None:
+    width, height = 90, 70
+    x, y = v028.coordinate_grids(width=width, height=height)
+    whole = v028.v028_field(x, y)
+    strips = np.vstack(
+        [v028.v028_field(x[start : start + 25], y[start : start + 25]) for start in range(0, height, 25)]
+    )
+    assert np.array_equal(whole, strips)
+
+
+def test_v028_fine_structure_stays_non_negative() -> None:
+    r = np.linspace(0.0, 1.2, 601)[:, None] * np.ones((1, 360))
+    theta = np.linspace(-np.pi, np.pi, 360)[None, :] * np.ones((601, 1))
+    n = v028.fine_structure(r, theta, kappa_n=10.0, lambda_n=8.0, zeta_n=3.0)
+    assert n.min() >= 0.0
+    assert n.max() <= 2.0
+
+
+def test_v028_rejects_invalid_ripple_parameters() -> None:
+    r = np.linspace(0.1, 0.5, 5)
+    with pytest.raises(ValueError):
+        v028.chirped_radius(r, kappa_n=-1.0)
+    with pytest.raises(ValueError):
+        v028.ripple_amplitude(r, lambda_n=-1.0)
+
+
+def test_v028_cli_defaults_match_the_field() -> None:
+    import inspect
+    import sys as _sys
+
+    signature = inspect.signature(v028.v028_field).parameters
+    argv, _sys.argv = _sys.argv, ["v028"]
+    try:
+        options = vars(v028.parse_args())
+    finally:
+        _sys.argv = argv
+    for name in ("kappa_n", "lambda_n", "zeta_n", "epsilon_n", "k_r", "einstein_radius"):
+        assert options[name] == signature[name].default

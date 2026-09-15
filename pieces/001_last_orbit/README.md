@@ -1369,7 +1369,210 @@ python pieces/001_last_orbit/experiments/v025_horizon_suppression.py --k-h 80
 python pieces/001_last_orbit/experiments/v025_horizon_suppression.py --k-h 60000
 ```
 
-Possible next versions:
+### v026 - final equation
 
-- v026: Doppler colour from the velocity field
-- v027: separation shrinking as the orbit decays
+No new effect. This version is editing: every term was switched off in turn,
+and anything whose absence could not be seen was deleted.
+
+```text
+F = H [ D1 S1 N1 + D2 S2 N2 + A + T + Q + P ]
+L = 1 - exp(-g F)
+Pixel = 255 [ 1 - exp(-4 L),  1 - exp(-2 L),  1 - exp(-0.7 L) ]
+```
+
+`S_i` are the disks: a Gaussian ring about the distorted radius of v012, wound
+into a logarithmic spiral (v009), shaped by the harmonic (v007) and beaming
+(v006) profile, and faded by the radial decay of v010. `N_i` is the fine
+structure of v024, `D_i` the Doppler-inspired factor of v020, `A` the outer
+halo of v004, `T` the tidal bridge of v014, `Q` the tidal tails of v015, `P`
+the potential glow of v016 and `H` the horizon suppression of v025.
+
+### How the cuts were decided
+
+Each of sixteen terms was removed from the full `1200x1200` render, one at a
+time, and the change measured in eight-bit levels:
+
+```text
+term removed               mean   p99    max   pixels > 3 levels
+background     (v023)      1.47     3      3        0.0%
+wave tint      (v022)      0.73     5      8        3.1%
+quadrupole     (v018)      1.37     5      6        6.1%
+anisotropy     (v005)      0.86     8     11       10.9%
+bridge         (v014)      0.71    20     81        3.2%
+harmonic       (v007)      1.38    15     23       13.8%
+fine structure (v024)      1.54    18     29       14.2%
+  ... spiral, beaming, Doppler, decay, tails, distortion ...
+potential      (v016)     13.43    25     29       94.9%
+halo           (v004)     22.70    51     54       96.4%
+```
+
+Four were cut.
+
+The background of v023 was designed to be seen only on close inspection, at
+three levels. In the final equation it is added before compression rather than
+after, which compresses it about four times harder: it then changes no pixel by
+more than one level anywhere, and is gone.
+
+The quadrupole wave `W` of v017 and v018 appeared twice, as `(1 + e_w W)` on the
+intensity and as a tint in the colour. Removed together, the change is under
+nine levels at the 99th percentile. The pattern is real, a clean two-armed
+spiral in a tenfold-magnified difference image, but it is not visible in the
+image itself. It does not carry the motion either: across a five degree step of
+orbital phase it accounts for half a level on average and three at most, against
+thirty-two levels of change from everything else. With `W` gone, the core taper
+added in v022 to repair its singularity at the origin has nothing to repair and
+goes too.
+
+The anisotropy `1 + e cos theta` of v005 was the one borderline cut. Its change
+sits in the brightest part of the bridge, where twenty levels are hardest to
+see, and it duplicates what the Doppler factor of v020 now does: both are a
+cosine peaked toward the companion. Removing the background, `W` and the
+anisotropy together moves the frame by `2.0` levels on average and `14` at the
+99th percentile, and side by side the two renders are not distinguishable.
+
+A second pass removed each survivor from the pruned image. Every one still
+matters, the smallest being the bridge at `22` levels in the 99th percentile
+and `84` at its brightest knot, so nothing further was cut.
+
+The bridge and the harmonic look small on average, but their change is
+concentrated: the bridge is a narrow bar of up to `81` levels, and averages
+across a mostly empty frame say little about that.
+
+### Differences from the equation as written
+
+The halo `A` was not in the proposed final equation but is the single largest
+term: removing it changes `96%` of the frame by `23` levels on average. It stays.
+
+`H` now multiplies the intensity before compression, as written, where v025
+applied it after. The two orderings differ by about one level on average and
+twelve at most, all in the thin band at the horizon edge.
+
+### Deleted code
+
+Beyond the four terms, the file drops everything that only served them or had
+been left behind: the Hill and linear tone modes, the product form of the fine
+structure, the velocity diagnostic, `ring_field`, `silhouette_field`, an unused
+colour ramp and import, and four stray parameters that an earlier edit had
+attached to `doppler_factor_inspired` by mistake. The experiment goes from
+`1073` lines to `607`, and from `67` command-line options to `48`.
+
+The surviving functions are copied unchanged from v025, and the result is
+verified to be bit-for-bit identical to v025 rendered with the four terms
+switched off.
+
+```bash
+python pieces/001_last_orbit/experiments/v026_final_equation.py
+python pieces/001_last_orbit/experiments/v026_final_equation.py --series
+```
+
+## Finishing
+
+v026 is the preserved late-stage version. Judged against it, the image still
+read as two black circles on a repeating ripple, rather than as a binary black
+hole merger whose mathematics shows on closer inspection. The piece is finished
+in four more steps, each a single idea: the horizons act on their surroundings
+(v027), the ripples lose their regularity (v028), one strong asymmetry (v029),
+and tone and composition only (v030). No stars, flares, noise or realistic
+textures are added at any point.
+
+### v027 - horizon lensing
+
+In v026 the horizons were clean circles sitting on top of the pattern. Now the
+holes bend the plane around them. Every luminous term is evaluated at the image
+of each point under the softened binary point-lens equation,
+
+```text
+beta(p) = p - sum_i  r_E^2 (p - c_i) / (|p - c_i|^2 + s^2)
+```
+
+with `r_E = 0.12` and `s = 0.02`, and weighted by the lens magnification
+
+```text
+mu = 1 / det J(beta)          F = H(p) [ ... ](beta)  mu^q
+```
+
+with `q = 1.5`. The horizon suppression `H` still uses the true position `p`,
+so both interiors stay black and exactly circular.
+
+One equation gives all three effects asked for. Structure crowds toward each
+horizon, because the map compresses radial spacing by `1 + r_E^2 / r^2`: nearly
+double at the rim. Patterns bend around the holes, and very slightly around the
+binary as a whole. And light intensifies at the boundary, since `mu` peaks at
+about `2.1` there and returns to `1` away from the holes.
+
+The warp and the magnification are separate for a reason. On its own the warp
+does not brighten the rim; it dims it, to `0.86` of v026. It pulls the inner
+part of each disk out from behind the horizon, and that part is dimmer than the
+ring. The magnification is what makes the rim glow: mean brightness in the band
+just outside the horizon rises to `1.33` times v026 at `1200x1200`.
+
+`det J` is computed analytically rather than by differencing neighbouring
+pixels. It agrees with finite differences to `2e-4`, and it keeps every term a
+pure function of position, so rendering in strips stays bit-for-bit identical to
+a single pass.
+
+### The limit on r_E
+
+The softened map folds, with `det J` passing through zero, on a curve of radius
+close to `r_E`. While that curve lies inside the horizon it is hidden. At
+`r_E = 0.12` the smallest determinant anywhere visible is `0.48`, and nothing
+folds. At `r_E = 0.16` the fold emerges on `0.7%` of the visible frame as a
+thin, hard, bright sliver beside the horizon: a caustic, whose magnification
+and spatial frequency are unbounded and which would alias at any resolution.
+
+The crowding does raise the frequency of the fine structure near the rim. Its
+shortest cycle over the visible lit area is now `9` pixels at `1200x1200` and
+`5.6` at `512x512`, down from `17` and `8`, still clear of the two-pixel limit.
+
+Beyond the rims the bending is gentle but not zero: the pattern shifts enough to
+change the far field by up to `20` levels at the 99th percentile. Setting
+`--einstein-radius 0` reproduces v026 exactly.
+
+```bash
+python pieces/001_last_orbit/experiments/v027_horizon_lensing.py
+python pieces/001_last_orbit/experiments/v027_horizon_lensing.py --magnification 0
+python pieces/001_last_orbit/experiments/v027_horizon_lensing.py --einstein-radius 0
+```
+
+The second command shows the warp without the magnification.
+
+### v028 - evolving ripples
+
+The fine structure from v024 had one wavenumber and one amplitude everywhere,
+so its striations read as interference fringes. v028 keeps the same term but
+lets all three of its properties change with radius:
+
+```text
+N_i = 1 + eps(r_i) sin( k_r R(r_i) + m theta_i + zeta (r_i / r_ring)^2 cos(2 theta_i*) + c ln(r_i + s) )
+
+R(r)   = (1 + kappa r_ring) ln(1 + kappa r) / kappa
+eps(r) = min(1, eps_N exp(-lambda (r - r_ring)))
+```
+
+- **Spacing.** `R` has slope `(1 + kappa r_ring) / (1 + kappa r)`, which is
+  exactly `1` at the ring. The ripples keep their v027 spacing there, are
+  tighter toward the horizon and loosen outward. With `kappa = 10` the local
+  wavenumber is about three times larger at the horizon than in the outer disk.
+- **Amplitude.** `eps` is still `0.35` at the ring. It reaches its cap of `1`
+  beside the horizons and falls to about `0.12` between `r = 0.4` and `0.5`, so
+  the outer structure dissolves into the smooth disk.
+- **Distortion.** `r^2 cos(2 theta*)` is the shape of a companion's tidal
+  potential. `theta*` is the anchored angle, measured from the companion and
+  not rotated by the orbital phase, so the bulge always faces the other hole.
+  Its effect grows with `r^2`: inner ripples stay coherent while the outer ones
+  are pulled out of line.
+
+Defaults are `kappa_n = 10`, `lambda_n = 8` and `zeta_n = 3`. Setting all three
+to `0` reproduces v027 exactly.
+
+Tighter inner ripples raise the aliasing risk. The shortest cycle over the
+visible lit disk is `5.9` pixels at `1200x1200` and `2.5` at `512x512`, against
+`7.9` and `3.4` in v027 under the same measurement. Both stay above the
+two-pixel limit, and the final render at `6000x6000` has five times the margin.
+
+```bash
+python pieces/001_last_orbit/experiments/v028_evolving_ripples.py
+python pieces/001_last_orbit/experiments/v028_evolving_ripples.py --zeta-n 0
+python pieces/001_last_orbit/experiments/v028_evolving_ripples.py --kappa-n 0 --lambda-n 0 --zeta-n 0
+```
+
