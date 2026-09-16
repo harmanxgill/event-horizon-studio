@@ -272,6 +272,15 @@ assert v028_spec.loader is not None
 v028_spec.loader.exec_module(v028)
 
 
+v029_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v029",
+    PIECE_DIR / "experiments" / "v029_approaching_side.py",
+)
+v029 = importlib.util.module_from_spec(v029_spec)
+assert v029_spec.loader is not None
+v029_spec.loader.exec_module(v029)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -3478,3 +3487,98 @@ def test_v028_cli_defaults_match_the_field() -> None:
         _sys.argv = argv
     for name in ("kappa_n", "lambda_n", "zeta_n", "epsilon_n", "k_r", "einstein_radius"):
         assert options[name] == signature[name].default
+
+
+def test_v029_render_is_well_formed() -> None:
+    x, y = v029.coordinate_grids(width=81, height=65)
+    level = v029.v029_field(x, y)
+    rgb = v029.v029_rgb(width=81, height=65)
+    assert level.shape == (65, 81)
+    assert np.all(np.isfinite(level))
+    assert np.all((level >= 0.0) & (level <= 1.0))
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+
+
+def test_v029_reduces_to_v028_without_beaming() -> None:
+    x, y = v029.coordinate_grids(width=240, height=240)
+    for parameters in ({}, {"phase": 1.1}):
+        assert np.array_equal(
+            v029.v029_field(x, y, beta_g=0.0, **parameters), v028.v028_field(x, y, **parameters)
+        )
+    assert np.array_equal(v029.v029_rgb(240, 240, beta_g=0.0), v028.v028_rgb(240, 240))
+
+
+def test_v029_velocity_is_smooth_bounded_and_peaks_at_root_two_rho_c() -> None:
+    rho = np.linspace(0.0, 3.0, 30001)
+    angle = 0.75 * np.pi
+    x, y = rho * np.cos(angle), rho * np.sin(angle)
+    u = v029.line_of_sight_velocity(x, y, beaming_angle=angle, rho_c=0.36)
+    assert u[0] == 0.0
+    assert np.isclose(u.max(), 1.0, atol=1e-6)
+    assert np.isclose(rho[np.argmax(u)], np.sqrt(2.0) * 0.36, atol=1e-3)
+    grid_x, grid_y = v029.coordinate_grids(width=301, height=301)
+    field = v029.line_of_sight_velocity(grid_x, grid_y)
+    assert np.all(np.abs(field) <= 1.0 + 1e-12)
+
+
+def test_v029_approaching_side_is_brighter_than_its_mirror() -> None:
+    x, y = v029.coordinate_grids(width=301, height=301)
+    beaming = v029.orbital_beaming(x, y)
+    mirrored = v029.orbital_beaming(-x, -y)
+    velocity = v029.line_of_sight_velocity(x, y)
+    ahead = velocity > 1e-9
+    assert np.all(beaming[ahead] > mirrored[ahead])
+    assert np.isclose(beaming.max(), 1.45**3, rtol=1e-3)
+    assert np.isclose(beaming.min(), 0.55**3, rtol=1e-3)
+
+
+def test_v029_breaks_the_half_turn_balance_of_the_image() -> None:
+    x, y = v029.coordinate_grids(width=240, height=240)
+    r1, r2 = v029.radial_fields(x, y)
+    visible = (r1 > 0.16) & (r2 > 0.16)
+
+    def imbalance(level: np.ndarray) -> float:
+        toward = visible & (x * np.cos(0.75 * np.pi) + y * np.sin(0.75 * np.pi) > 0.0)
+        away = visible & (x * np.cos(0.75 * np.pi) + y * np.sin(0.75 * np.pi) < 0.0)
+        return float(level[toward].mean() / level[away].mean())
+
+    assert imbalance(v029.v029_field(x, y)) > 1.3 * imbalance(v028.v028_field(x, y))
+
+
+def test_v029_keeps_horizons_black_and_strips_identical() -> None:
+    width, height = 90, 70
+    x, y = v029.coordinate_grids(width=width, height=height)
+    whole = v029.v029_field(x, y)
+    strips = np.vstack(
+        [v029.v029_field(x[start : start + 25], y[start : start + 25]) for start in range(0, height, 25)]
+    )
+    assert np.array_equal(whole, strips)
+    big_x, big_y = v029.coordinate_grids(width=301, height=301)
+    r1, r2 = v029.radial_fields(big_x, big_y)
+    assert v029.v029_field(big_x, big_y)[(r1 < 0.12) | (r2 < 0.12)].max() < 1e-2
+
+
+def test_v029_rejects_invalid_beaming() -> None:
+    x, y = v029.coordinate_grids(width=9, height=9)
+    with pytest.raises(ValueError):
+        v029.orbital_beaming(x, y, beta_g=1.0)
+    with pytest.raises(ValueError):
+        v029.orbital_beaming(x, y, p_g=-1.0)
+    with pytest.raises(ValueError):
+        v029.line_of_sight_velocity(x, y, rho_c=0.0)
+
+
+def test_v029_cli_defaults_match_the_field() -> None:
+    import inspect
+    import sys as _sys
+
+    signature = inspect.signature(v029.v029_field).parameters
+    argv, _sys.argv = _sys.argv, ["v029"]
+    try:
+        options = vars(v029.parse_args())
+    finally:
+        _sys.argv = argv
+    for name in ("beta_g", "p_g", "rho_c", "kappa_n", "lambda_n", "zeta_n"):
+        assert options[name] == signature[name].default
+    assert np.isclose(np.radians(options["beaming_degrees"]), signature["beaming_angle"].default)

@@ -14,7 +14,7 @@ Finished images can go in `gallery/`.
 
 | Piece | Status | Notes |
 | --- | --- | --- |
-| [001 - The Last Orbit](https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit "https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit") | v028 | Equal-mass binary black holes in the final orbit before merger. |
+| [001 - The Last Orbit](https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit "https://github.com/harmanxgill/event-horizon-studio/tree/main/pieces/001_last_orbit") | v029 | Equal-mass binary black holes in the final orbit before merger. |
 
 ## Installation
 
@@ -29,13 +29,13 @@ pip install -e ".[dev]"
 Render the latest version:
 
 ```bash
-python pieces/001_last_orbit/experiments/v028_evolving_ripples.py
+python pieces/001_last_orbit/experiments/v029_approaching_side.py
 ```
 
 Render it smaller:
 
 ```bash
-python pieces/001_last_orbit/experiments/v028_evolving_ripples.py --width 512 --height 512
+python pieces/001_last_orbit/experiments/v029_approaching_side.py --width 512 --height 512
 ```
 
 Earlier versions still render on their own:
@@ -68,6 +68,7 @@ python pieces/001_last_orbit/experiments/v024_fine_structure.py
 python pieces/001_last_orbit/experiments/v025_horizon_suppression.py
 python pieces/001_last_orbit/experiments/v026_final_equation.py
 python pieces/001_last_orbit/experiments/v027_horizon_lensing.py
+python pieces/001_last_orbit/experiments/v028_evolving_ripples.py
 ```
 
 The current renders use a square `1200x1200` default so the images line up cleanly.

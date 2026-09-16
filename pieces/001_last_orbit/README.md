@@ -1576,3 +1576,46 @@ python pieces/001_last_orbit/experiments/v028_evolving_ripples.py --zeta-n 0
 python pieces/001_last_orbit/experiments/v028_evolving_ripples.py --kappa-n 0 --lambda-n 0 --zeta-n 0
 ```
 
+
+### v029 - approaching side
+
+v028 was still balanced: every bright region had a matching one half a turn
+away. v029 adds one asymmetry, a Doppler-inspired velocity field for the binary
+as a whole. The material circulates about the centre of mass, so one side moves
+toward the viewer and brightens while the opposite side recedes and dims:
+
+```text
+u(p) = (p . n) / (rho_c^2 + rho^2)^(3/4) / u_max
+D_g  = (1 + beta_g u)^p_g
+F    = H [ ... ] mu D_g
+```
+
+`n` points toward the approaching side. The tangential speed
+`rho / (rho_c^2 + rho^2)^(3/4)` turns rigidly inside `rho_c` and falls off like
+a Keplerian orbit outside it. Its line-of-sight part is linear in position near
+the centre, so unlike a pure Keplerian profile it has no singularity where the
+bright core sits. `u` peaks at `rho = sqrt(2) rho_c` and is normalised to `[-1, 1]`
+there, and `D_g` returns to `1` far from the binary.
+
+Defaults are `beta_g = 0.45`, `p_g = 3`, `rho_c = a = 0.36`, and the approaching
+side toward the upper left (`135` degrees). This puts the brightest sweep along
+the upper-left tail, through the left disk and into the centre, and leaves the
+lower-right side of the right hole in shadow. `D_g` spans `0.17` to `3.05`.
+Measured in luma at `1200x1200`, a region on the approaching side is now `7.7`
+times brighter than its mirror image (`132` against `17`; v028 was exactly `1`).
+Mean luma of the whole frame rises only from `47` to `50`, and nothing clips.
+At `beta_g = 0.6` the right hole's disk almost disappears, which loses the
+binary.
+
+The field does not rotate with the orbital phase: the line of sight is fixed,
+so the pattern turns underneath a constant bright side. It is per-pixel, so
+strip rendering is still bit-identical. Setting `beta_g = 0` reproduces v028 exactly.
+
+The approaching side also lifts the upper-left background. v030 deals with
+that.
+
+```bash
+python pieces/001_last_orbit/experiments/v029_approaching_side.py
+python pieces/001_last_orbit/experiments/v029_approaching_side.py --beaming-degrees -135
+python pieces/001_last_orbit/experiments/v029_approaching_side.py --beta-g 0
+```
