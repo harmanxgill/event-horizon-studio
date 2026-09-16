@@ -1619,3 +1619,59 @@ python pieces/001_last_orbit/experiments/v029_approaching_side.py
 python pieces/001_last_orbit/experiments/v029_approaching_side.py --beaming-degrees -135
 python pieces/001_last_orbit/experiments/v029_approaching_side.py --beta-g 0
 ```
+
+### v030 - final tone
+
+No new field. v030 changes only how much of the existing light is shown and how
+levels map to pixels.
+
+**The ground goes toward black.** The background light in v029 came almost
+entirely from two terms that carry no structure of their own: the potential
+pedestal `lambda_P P` and the smooth halo outside each ring. Both are turned
+down (`lambda_P` from `0.25` to `0.05`, glow from `0.30` to `0.15`). A gentle toe
+then takes the level to a power just above one before the colour equations:
+
+```text
+L' = L^tau,   tau = 1.1
+```
+
+A power fixes `0` and `1` and darkens low levels proportionally more than high
+ones. It also keeps ratios between nearby levels, so faint structure on a dark
+ground stays legible. Stronger toes were tried and rejected: at `tau = 1.6` the
+side of the right hole that v029 dimmed falls to black with it, and the right
+horizon stops reading as a horizon. The binary has to survive the tone.
+
+**The centre is held.** The exposure `gamma_L` drops from `0.25` to `0.23`, so the
+core keeps its gold instead of going pale.
+
+Measured in luma at `1200x1200`, v029 against v030:
+
+| Region | v029 | v030 |
+| --- | --- | --- |
+| Corners, mean | 21.1 | 7.5 |
+| Upper-left ground | 56.4 | 21.8 |
+| Outer tail | 86.7 | 49.4 |
+| Right horizon rim | 47.0 | 26.8 |
+| Left horizon rim | 144.6 | 105.6 |
+| Core, 99th percentile | 204.1 | 198.0 |
+| Whole frame, mean | 49.8 | 27.2 |
+
+The darkest corner reaches `0.2`. The outer tail still sits at more than six
+times the corner level, and the dim right rim stays well clear of the ground.
+
+Setting `--tau 1 --lambda-p 0.25 --glow 0.30 --gamma-l 0.25` reproduces v029 exactly.
+
+### The final render
+
+`v030_rgb` renders in horizontal strips (`--strip-rows`). Every term is a pure
+function of position, so the strips are bit-identical to a single pass; tests
+check this for several strip heights. A single pass at `6000x6000` would need
+several gigabytes of intermediate arrays.
+
+```bash
+python pieces/001_last_orbit/experiments/v030_final_tone.py
+python pieces/001_last_orbit/experiments/v030_final_tone.py --width 6000 --height 6000 --strip-rows 250 --output gallery/001_THE_LAST_ORBIT_FINAL.png
+```
+
+At `6000x6000` the shortest ripple cycle is five times what it is at
+`1200x1200`, about `30` pixels.

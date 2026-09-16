@@ -281,6 +281,15 @@ assert v029_spec.loader is not None
 v029_spec.loader.exec_module(v029)
 
 
+v030_spec = importlib.util.spec_from_file_location(
+    "last_orbit_v030",
+    PIECE_DIR / "experiments" / "v030_final_tone.py",
+)
+v030 = importlib.util.module_from_spec(v030_spec)
+assert v030_spec.loader is not None
+v030_spec.loader.exec_module(v030)
+
+
 def test_field_dimensions_and_finite_values() -> None:
     fields = equations.evaluate_fields(width=80, height=64)
 
@@ -3582,3 +3591,79 @@ def test_v029_cli_defaults_match_the_field() -> None:
     for name in ("beta_g", "p_g", "rho_c", "kappa_n", "lambda_n", "zeta_n"):
         assert options[name] == signature[name].default
     assert np.isclose(np.radians(options["beaming_degrees"]), signature["beaming_angle"].default)
+
+
+V030_AS_V029 = {"tau": 1.0, "glow": 0.30, "lambda_p": 0.25, "gamma_l": 0.25}
+LUMA = np.array([0.2126, 0.7152, 0.0722])
+
+
+def test_v030_render_is_well_formed() -> None:
+    rgb = v030.v030_rgb(width=81, height=65)
+    assert rgb.shape == (65, 81, 3)
+    assert rgb.dtype == np.uint8
+
+
+def test_v030_adds_no_field_and_reduces_to_v029() -> None:
+    assert np.array_equal(v030.v030_rgb(240, 240, **V030_AS_V029), v029.v029_rgb(240, 240))
+    x, y = v030.coordinate_grids(width=160, height=160)
+    field_only = {name: value for name, value in V030_AS_V029.items() if name != "tau"}
+    assert np.array_equal(v030.v030_field(x, y, **field_only), v029.v029_field(x, y))
+
+
+def test_v030_toe_fixes_the_ends_and_darkens_the_ground_most() -> None:
+    level = np.linspace(0.0, 1.0, 1001)
+    toed = v030.tone_toe(level, tau=1.1)
+    assert toed[0] == 0.0 and toed[-1] == 1.0
+    assert np.all(np.diff(toed) >= 0.0)
+    ratio = toed[1:] / level[1:]
+    assert np.all(np.diff(ratio) >= -1e-12)
+    assert v030.tone_toe(level, 1.0) is level
+    with pytest.raises(ValueError):
+        v030.tone_toe(level, 0.0)
+
+
+def test_v030_strip_rendering_is_bit_identical() -> None:
+    whole = v030.v030_rgb(97, 83)
+    for rows in (1, 10, 37, 83, 500):
+        assert np.array_equal(v030.v030_rgb(97, 83, strip_rows=rows), whole)
+    with pytest.raises(ValueError):
+        v030.v030_rgb(10, 10, strip_rows=0)
+
+
+def test_v030_deepens_the_ground_but_keeps_both_holes_and_the_outer_mathematics() -> None:
+    n = 320
+    x, y = v030.coordinate_grids(width=n, height=n)
+    r1, r2 = v030.radial_fields(x, y)
+    rho = np.hypot(x, y)
+    final = v030.v030_rgb(n, n).astype(float) @ LUMA
+    before = v029.v029_rgb(n, n).astype(float) @ LUMA
+
+    corners = rho > 1.1
+    assert final[corners].mean() < 0.5 * before[corners].mean()
+
+    right_rim = (r2 > 0.15) & (r2 < 0.21)
+    assert final[right_rim].mean() > 20.0
+
+    tail = np.hypot(x + 0.2, y - 0.8) < 0.08
+    assert final[tail].mean() > 2.0 * final[corners].mean()
+
+    core = rho < 0.2
+    assert np.percentile(final[core], 99) <= np.percentile(before[core], 99)
+    assert np.all(final[(r1 < 0.12) | (r2 < 0.12)] < 3.0)
+
+
+def test_v030_cli_defaults_match_the_render() -> None:
+    import inspect
+    import sys as _sys
+
+    field = inspect.signature(v030.v030_field).parameters
+    rgb = inspect.signature(v030.v030_rgb).parameters
+    argv, _sys.argv = _sys.argv, ["v030"]
+    try:
+        options = vars(v030.parse_args())
+    finally:
+        _sys.argv = argv
+    for name in ("glow", "lambda_p", "gamma_l", "beta_g", "kappa_n"):
+        assert options[name] == field[name].default
+    assert options["tau"] == rgb["tau"].default
+    assert options["strip_rows"] is None
