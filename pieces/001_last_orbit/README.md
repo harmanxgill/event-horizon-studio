@@ -1675,3 +1675,23 @@ python pieces/001_last_orbit/experiments/v030_final_tone.py --width 6000 --heigh
 
 At `6000x6000` the shortest ripple cycle is five times what it is at
 `1200x1200`, about `30` pixels.
+
+## Timelapse
+
+`timelapse.py` turns the version renders into one video,
+`gallery/001_THE_LAST_ORBIT_TIMELAPSE.mp4`. Each still, v001 to v030, is held for
+`0.8` seconds with a `0.4` second smoothstep crossfade and a quiet version label.
+Phase series and diagnostics are left out. v030 holds for three seconds, then
+the piece turns through one full orbit: the orbital phase runs from `0` to `2 pi`
+over ten seconds. Those frames are rendered from the v030 equations, not
+interpolated. The orbit starts on the same image the evolution ends on, so the
+cut is invisible and the loop closes.
+
+The stills are read from the committed PNGs, so re-render a version first if its
+defaults change.
+
+```bash
+pip install -e ".[video]"
+python pieces/001_last_orbit/timelapse.py
+python pieces/001_last_orbit/timelapse.py --orbit-seconds 0 --no-labels
+```
