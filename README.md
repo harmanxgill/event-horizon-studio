@@ -38,14 +38,14 @@ Render the final gallery image (6000x6000, in strips):
 python pieces/001_last_orbit/experiments/v030_final_tone.py --width 6000 --height 6000 --strip-rows 250 --output gallery/001_THE_LAST_ORBIT_FINAL.png
 ```
 
-Render the timelapse of every version, v001 to v030, ending on one full orbit of the final image (`gallery/001_THE_LAST_ORBIT_TIMELAPSE.mp4`, 1080x1080, about 48 seconds):
+Render the timelapse of every version, v001 to v030 (`gallery/001_THE_LAST_ORBIT_TIMELAPSE.mp4`, 1080x1080, about 14 seconds):
 
 ```bash
 pip install -e ".[video]"
 python pieces/001_last_orbit/timelapse.py
 ```
 
-Add `--orbit-seconds 0` to skip the orbit, or `--no-labels` to hide the version names.
+Add `--orbit-seconds 5` to end on a full orbit of the final image, or `--no-labels` to hide the version names.
 
 Render it smaller:
 

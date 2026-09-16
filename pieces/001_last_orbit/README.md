@@ -1678,20 +1678,28 @@ At `6000x6000` the shortest ripple cycle is five times what it is at
 
 ## Timelapse
 
-`timelapse.py` turns the version renders into one video,
-`gallery/001_THE_LAST_ORBIT_TIMELAPSE.mp4`. Each still, v001 to v030, is held for
-`0.8` seconds with a `0.4` second smoothstep crossfade and a quiet version label.
-Phase series and diagnostics are left out. v030 holds for three seconds, then
-the piece turns through one full orbit: the orbital phase runs from `0` to `2 pi`
-over ten seconds. Those frames are rendered from the v030 equations, not
-interpolated. The orbit starts on the same image the evolution ends on, so the
-cut is invisible and the loop closes.
+`timelapse.py` turns the version renders into one video of about fourteen
+seconds, `gallery/001_THE_LAST_ORBIT_TIMELAPSE.mp4`. Phase series and
+diagnostics are left out. The pace follows the story of the piece:
 
+- **v001 to v025** move quickly: each still is held for `0.15` seconds, with a
+  `0.15` second smoothstep crossfade.
+- **v026 to v030**, the late refinements, slow down to a `0.7` second hold and
+  a `0.4` second crossfade.
+- **v030** holds for `2.5` seconds at the end.
+
+Every frame carries a quiet version label. `--orbit-seconds 5` adds a closing
+orbit: the orbital phase runs from `0` to `2 pi`, rendered from the v030
+equations rather than interpolated. It starts on the same image the evolution
+ends on, so there is no visible cut.
+
+The video is written to a `.partial.mp4` file and renamed only when it is
+complete, because an MP4 cannot be played until its index is written at the end.
 The stills are read from the committed PNGs, so re-render a version first if its
 defaults change.
 
 ```bash
 pip install -e ".[video]"
 python pieces/001_last_orbit/timelapse.py
-python pieces/001_last_orbit/timelapse.py --orbit-seconds 0 --no-labels
+python pieces/001_last_orbit/timelapse.py --orbit-seconds 5 --no-labels
 ```

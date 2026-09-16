@@ -83,21 +83,26 @@ def evolution_frames(
     fade: float,
     final_hold: float,
     labels: bool,
+    slow_from: int = 26,
+    slow_hold: float = 0.7,
+    slow_fade: float = 0.4,
 ) -> Iterator[np.ndarray]:
     renders = version_renders()
     if not renders:
         raise FileNotFoundError(f"no version renders in {EXPERIMENTS}")
 
-    hold_frames = max(1, round(hold * fps))
-    fade_frames = max(0, round(fade * fps))
     previous = None
     for position, (number, name, path) in enumerate(renders):
+        # early versions move quickly; the late refinements get time to be seen
+        slow = number >= slow_from
+        hold_frames = max(1, round((slow_hold if slow else hold) * fps))
+        fade_frames = max(0, round((slow_fade if slow else fade) * fps))
         text = f"v{number:03d}  {name}" if labels else None
         frame = with_label(load_frame(path, size), text)
         if previous is not None:
             yield from crossfade(previous, frame, fade_frames)
         last = position == len(renders) - 1
-        for _ in range(max(hold_frames, round(final_hold * fps)) if last else hold_frames):
+        for _ in range(round(final_hold * fps) if last else hold_frames):
             yield frame
         previous = frame
 
@@ -127,10 +132,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--size", type=int, default=1080)
     parser.add_argument("--fps", type=int, default=30)
-    parser.add_argument("--hold", type=float, default=0.8, help="seconds each version is held")
-    parser.add_argument("--fade", type=float, default=0.4, help="seconds of crossfade between versions")
-    parser.add_argument("--final-hold", type=float, default=3.0, help="seconds v030 is held")
-    parser.add_argument("--orbit-seconds", type=float, default=10.0, help="0 skips the closing orbit")
+    parser.add_argument("--hold", type=float, default=0.15, help="seconds each early version is held")
+    parser.add_argument("--fade", type=float, default=0.15, help="seconds of crossfade into an early version")
+    parser.add_argument("--slow-from", type=int, default=26, help="first version shown slowly")
+    parser.add_argument("--slow-hold", type=float, default=0.7)
+    parser.add_argument("--slow-fade", type=float, default=0.4)
+    parser.add_argument("--final-hold", type=float, default=2.5, help="seconds v030 is held")
+    parser.add_argument("--orbit-seconds", type=float, default=0.0, help="0 skips the closing orbit")
     parser.add_argument("--crf", type=int, default=16)
     parser.add_argument("--no-labels", action="store_true")
     return parser.parse_args()
@@ -147,9 +155,12 @@ def main() -> None:
         sys.exit("size must be even for yuv420p video")
     labels = not options.no_labels
     options.output.parent.mkdir(parents=True, exist_ok=True)
+    # an MP4 is unplayable until ffmpeg writes its index at the very end, so the
+    # real name only ever points at a finished file
+    partial = options.output.with_name(options.output.stem + ".partial" + options.output.suffix)
 
     writer = imageio_ffmpeg.write_frames(
-        str(options.output),
+        str(partial),
         (options.size, options.size),
         fps=options.fps,
         codec="libx264",
@@ -162,7 +173,15 @@ def main() -> None:
 
     frames = 0
     for frame in evolution_frames(
-        options.size, options.fps, options.hold, options.fade, options.final_hold, labels
+        options.size,
+        options.fps,
+        options.hold,
+        options.fade,
+        options.final_hold,
+        labels,
+        slow_from=options.slow_from,
+        slow_hold=options.slow_hold,
+        slow_fade=options.slow_fade,
     ):
         writer.send(np.ascontiguousarray(frame))
         frames += 1
@@ -177,6 +196,7 @@ def main() -> None:
             frames += 1
 
     writer.close()
+    partial.replace(options.output)
     print(f"saved {options.output} ({frames} frames, {frames / options.fps:.1f} s)")
 
 
